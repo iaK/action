@@ -1,12 +1,12 @@
 {
-    "name": "iak/laravel_action",
-    "description": "This is my package laravel-action",
+    "name": "iak/action",
+    "description": "Simple actions for Laravel",
     "keywords": [
         "Isak Berglind",
         "laravel",
         "laravel-action"
     ],
-    "homepage": "https://github.com/iak/laravel-action",
+    "homepage": "https://github.com/iak/action",
     "license": "MIT",
     "authors": [
         {
