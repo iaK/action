@@ -2,6 +2,8 @@
 
 A simple way to organize your business logic in Laravel applications.
 
+While you can install this, I would encourage you to simply copy the action file and take ownership of it. The logic is not complicated, and it will allow you to add/remove/update the features you like.
+
 ## Installation
 
 ```bash
