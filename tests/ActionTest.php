@@ -1,7 +1,7 @@
 <?php
 
-use Mockery\MockInterface;
 use Iak\Action\Tests\TestAction;
+use Mockery\MockInterface;
 
 it('can be instantiated', function () {
     $action = TestAction::make();
@@ -34,15 +34,15 @@ it('can emit events', function () {
 
 it('throws an exception if an event is not allowed', function () {
     $action = new TestAction(true);
-    
-    expect(fn() => $action->handle())
+
+    expect(fn () => $action->handle())
         ->toThrow(InvalidArgumentException::class, "Cannot emit event 'test.event.c'. Did you mean: 'test.event.a'?");
 });
 
 it('throws an exception if listening to an event that is not allowed', function () {
     $action = TestAction::make();
-    
-    expect(fn() => $action->on('test.event.c', function () {}))
+
+    expect(fn () => $action->on('test.event.c', function () {}))
         ->toThrow(InvalidArgumentException::class, "Cannot listen for event 'test.event.c'. Did you mean: 'test.event.a'?");
 });
 

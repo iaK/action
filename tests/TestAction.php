@@ -10,9 +10,7 @@ class TestAction extends Action
 {
     public function __construct(
         private bool $fireIllegalEvent = false
-    )
-    {
-    }
+    ) {}
 
     public function handle()
     {

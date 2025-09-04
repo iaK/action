@@ -2,14 +2,13 @@
 
 namespace Iak\Action;
 
-use Mockery;
-use ReflectionClass;
-use Mockery\MockInterface;
-use Illuminate\Support\Str;
-use Iak\Action\EmitsEvents;
-use Mockery\LegacyMockInterface;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Mockery;
+use Mockery\LegacyMockInterface;
+use Mockery\MockInterface;
+use ReflectionClass;
 
 abstract class Action
 {
@@ -37,7 +36,7 @@ abstract class Action
      * Listen for an event emitted by this action
      */
     public function on(string $event, callable $callback): static
-    {        
+    {
         $this->throwIfEventNotAllowed($event, "Cannot listen for event '{$event}'.");
 
         Event::listen($this->generateEventName($event), $callback);
@@ -51,7 +50,7 @@ abstract class Action
     public function event(string $event, $data): static
     {
         $this->throwIfEventNotAllowed($event, "Cannot emit event '{$event}'.");
-        
+
         event($this->generateEventName($event), [$data]);
 
         return $this;
@@ -64,12 +63,13 @@ abstract class Action
     {
         $reflection = new ReflectionClass(static::class);
         $attributes = $reflection->getAttributes(EmitsEvents::class);
-        
+
         if (empty($attributes)) {
             return [];
         }
-        
+
         $emitsEventsAttribute = $attributes[0]->newInstance();
+
         return $emitsEventsAttribute->events;
     }
 
@@ -95,15 +95,15 @@ abstract class Action
             ->first();
 
         $message = Str::of($description)
-            ->when($closest, fn($str) => $str->append(" Did you mean: '{$closest}'?"))
-            ->when(!$closest, fn($str) => $str->append(" Allowed events: " . implode(', ', $allowedEvents) . "."));
+            ->when($closest, fn ($str) => $str->append(" Did you mean: '{$closest}'?"))
+            ->when(! $closest, fn ($str) => $str->append(' Allowed events: '.implode(', ', $allowedEvents).'.'));
 
         throw new InvalidArgumentException($message->toString());
     }
 
     private function generateEventName(string $event): string
     {
-        return static::class . '.' . spl_object_hash($this) . '.' . $event;
+        return static::class.'.'.spl_object_hash($this).'.'.$event;
     }
 
     public function __destruct()

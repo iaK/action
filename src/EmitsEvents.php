@@ -15,7 +15,7 @@ class EmitsEvents
         }
 
         foreach ($events as $event) {
-            if (!is_string($event)) {
+            if (! is_string($event)) {
                 throw new InvalidArgumentException('All events must be strings');
             }
         }
