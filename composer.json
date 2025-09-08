@@ -2,9 +2,11 @@
     "name": "iak/action",
     "description": "Simple actions for Laravel",
     "keywords": [
-        "Isak Berglind",
         "laravel",
-        "laravel-action"
+        "action",
+        "laravel-action",
+        "php",
+        "package"
     ],
     "homepage": "https://github.com/iak/action",
     "license": "MIT",
