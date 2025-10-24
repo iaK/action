@@ -33,4 +33,15 @@ abstract class Action
 
         return $mock;
     }
+
+    public function within(callable $callback)
+    {
+        $body = new Body();
+
+        $callback($body);
+
+        return $this;
+    }
+
+
 }

@@ -2,8 +2,9 @@
 
 use Iak\Action\Action;
 use Mockery\MockInterface;
-use Iak\Action\Tests\TestAction;
-use Iak\Action\Tests\MiddleManAction;
+use Iak\Action\Tests\TestClasses\TestAction;
+use Iak\Action\Tests\TestClasses\MiddleManAction;
+use Iak\Action\Tests\TestClasses\DeeplyNestedAction;
 
 it('can be instantiated', function () {
     $action = TestAction::make();
@@ -74,4 +75,23 @@ it('can listen thorugh a middle man', function () {
         ->on('test.event.a', function ($data) {
             expect($data)->toBe('Hello, World!');
         })->handle();
+});
+
+it('can handle deeply nested actions', function () {
+    (new DeeplyNestedAction())
+        ->on('test.event.a', function ($data) {
+            expect($data)->toBe('Hello, World!');
+        })
+        ->handle();
+});
+
+it('can mock actions inside other actions', function () {
+    MiddleManAction::make()
+        ->within(function ($root) {
+            $root->only(TestAction::class);
+        })
+        ->handle();
+
+    MiddleManAction::make()
+        ->fakeWithin(TestAction::class)
 });

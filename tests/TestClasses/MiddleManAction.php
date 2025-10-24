@@ -1,6 +1,6 @@
 <?php
 
-namespace Iak\Action\Tests;
+namespace Iak\Action\Tests\TestClasses;
 
 use Iak\Action\Action;
 use Iak\Action\EmitsEvents;
@@ -11,6 +11,9 @@ class MiddleManAction extends Action
 {
     public function handle()
     {
+        SecondAction::make()
+            ->handle();
+
         return TestAction::make()
             ->forwardEvents(['test.event.a', 'test.event.b'])
             ->handle();

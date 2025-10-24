@@ -1,6 +1,6 @@
 <?php
 
-namespace Iak\Action\Tests;
+namespace Iak\Action\Tests\TestClasses;
 
 use Iak\Action\Action;
 use Iak\Action\EmitsEvents;

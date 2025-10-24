@@ -51,6 +51,8 @@ trait HandlesEvents
      */
     protected function propagateToAncestor(string $event, $data): void
     {
+        static $propagatedTo = [];
+        
         $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
 
         array_shift($trace);
@@ -61,6 +63,13 @@ trait HandlesEvents
             }
     
             $ancestor = $frame['object'];
+            
+            // Create a unique key for this propagation to prevent circular references
+            $propagationKey = spl_object_hash($this) . '->' . spl_object_hash($ancestor) . ':' . $event;
+            
+            if (isset($propagatedTo[$propagationKey])) {
+                continue; // Already propagated this event from this object to this ancestor
+            }
             
             $usedTraits = [];
 
@@ -74,9 +83,9 @@ trait HandlesEvents
                 continue;
             }
 
-            dump($ancestor);
             // Only propagate if ancestor allows this event
             if (in_array($event, $ancestor->getAllowedEvents())) {
+                $propagatedTo[$propagationKey] = true;
                 $ancestor->event($event, $data);
             }
     
@@ -87,7 +96,7 @@ trait HandlesEvents
     /**
      * Get allowed events declared via #[EmitsEvents(...)]
      */
-    protected function getAllowedEvents(): array
+    public function getAllowedEvents(): array
     {
         $reflection = new \ReflectionClass(static::class);
         $attributes = $reflection->getAttributes(EmitsEvents::class);
@@ -107,7 +116,9 @@ trait HandlesEvents
     protected function throwIfEventNotAllowed(string $event, string $description): void
     {
         if (!in_array($event, $this->getAllowedEvents())) {
-            throw new \InvalidArgumentException($description . '. Allowed: ' . implode(', ', $this->getAllowedEvents()));
+            $allowedEvents = $this->getAllowedEvents();
+            $suggestion = !empty($allowedEvents) ? " Did you mean: '" . $allowedEvents[0] . "'?" : '';
+            throw new \InvalidArgumentException($description . $suggestion);
         }
     }
     
@@ -121,8 +132,11 @@ trait HandlesEvents
 
     public function __destruct()
     {
-        foreach ($this->getAllowedEvents() as $event) {
-            Event::forget($this->generateEventName($event));
+        // Only clean up if the application is still available
+        if (app()->bound('events')) {
+            foreach ($this->getAllowedEvents() as $event) {
+                Event::forget($this->generateEventName($event));
+            }
         }
     }
 }
