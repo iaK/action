@@ -12,6 +12,8 @@ use ReflectionClass;
 
 abstract class Action
 {
+    use HandlesEvents;
+
     /**
      * Create a new instance of the action
      */
@@ -30,86 +32,5 @@ abstract class Action
         app()->offsetSet($alias ?? static::class, $mock);
 
         return $mock;
-    }
-
-    /**
-     * Listen for an event emitted by this action
-     */
-    public function on(string $event, callable $callback): static
-    {
-        $this->throwIfEventNotAllowed($event, "Cannot listen for event '{$event}'.");
-
-        Event::listen($this->generateEventName($event), $callback);
-
-        return $this;
-    }
-
-    /**
-     * Emit an event from this action
-     */
-    public function event(string $event, $data): static
-    {
-        $this->throwIfEventNotAllowed($event, "Cannot emit event '{$event}'.");
-
-        event($this->generateEventName($event), [$data]);
-
-        return $this;
-    }
-
-    /**
-     * Get all allowed events for this action
-     */
-    private function getAllowedEvents(): array
-    {
-        $reflection = new ReflectionClass(static::class);
-        $attributes = $reflection->getAttributes(EmitsEvents::class);
-
-        if (empty($attributes)) {
-            return [];
-        }
-
-        $emitsEventsAttribute = $attributes[0]->newInstance();
-
-        return $emitsEventsAttribute->events;
-    }
-
-    /**
-     * Validate that an event is allowed for this action
-     */
-    private function throwIfEventNotAllowed(string $event, string $description): void
-    {
-        $allowedEvents = $this->getAllowedEvents();
-
-        if (in_array($event, $allowedEvents)) {
-            return;
-        }
-
-        $closest = collect($allowedEvents)
-            ->map(fn ($allowedEvent) => [
-                'option' => $allowedEvent,
-                'distance' => levenshtein($event, $allowedEvent),
-            ])
-            ->sortBy('distance')
-            ->filter(fn ($event) => $event['distance'] <= 3)
-            ->map(fn ($event) => $event['option'])
-            ->first();
-
-        $message = Str::of($description)
-            ->when($closest, fn ($str) => $str->append(" Did you mean: '{$closest}'?"))
-            ->when(! $closest, fn ($str) => $str->append(' Allowed events: '.implode(', ', $allowedEvents).'.'));
-
-        throw new InvalidArgumentException($message->toString());
-    }
-
-    private function generateEventName(string $event): string
-    {
-        return static::class.'.'.spl_object_hash($this).'.'.$event;
-    }
-
-    public function __destruct()
-    {
-        foreach ($this->getAllowedEvents() as $event) {
-            Event::forget($this->generateEventName($event));
-        }
     }
 }

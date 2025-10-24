@@ -1,7 +1,9 @@
 <?php
 
-use Iak\Action\Tests\TestAction;
+use Iak\Action\Action;
 use Mockery\MockInterface;
+use Iak\Action\Tests\TestAction;
+use Iak\Action\Tests\MiddleManAction;
 
 it('can be instantiated', function () {
     $action = TestAction::make();
@@ -65,4 +67,11 @@ it('isolates events for each action instance', function () {
 
     expect($eventsCalledForA)->toBe(['test.event.a']);
     expect($eventsCalledForB)->toBe(['test.event.a']);
+});
+
+it('can listen thorugh a middle man', function () {
+    MiddleManAction::make()
+        ->on('test.event.a', function ($data) {
+            expect($data)->toBe('Hello, World!');
+        })->handle();
 });
