@@ -36,9 +36,27 @@ abstract class Action
 
     public function within(callable $callback)
     {
-        $body = new Body();
-
+        $body = new Testable();
+        
         $callback($body);
+        
+        if (!empty($body->only)) {
+            app()->beforeResolving(function ($object, $app) use ($body) {
+                if (!class_exists($object)) {
+                    return;
+                }
+
+                $reflection = new ReflectionClass($object);
+                if (!$reflection->isSubclassOf(Action::class)) {
+                    return;
+                }
+
+                // Mock all actions that are NOT in the only array
+                if (!in_array($object, $body->only)) {
+                    $object::fake()->shouldReceive('handle');
+                }
+            });
+        }
 
         return $this;
     }

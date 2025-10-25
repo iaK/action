@@ -5,7 +5,7 @@ namespace Iak\Action;
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
 
-class Body
+class Testable
 {
     public array $only = [];
     public array $without = [];
@@ -37,6 +37,4 @@ class Body
 
         return $this;
     }
-
-    
 }

@@ -1,9 +1,11 @@
 <?php
 
+use Iak\Action\Testable;
 use Iak\Action\Action;
 use Mockery\MockInterface;
 use Iak\Action\Tests\TestClasses\TestAction;
 use Iak\Action\Tests\TestClasses\MiddleManAction;
+use Iak\Action\Tests\TestClasses\SecondAction;
 use Iak\Action\Tests\TestClasses\DeeplyNestedAction;
 
 it('can be instantiated', function () {
@@ -87,11 +89,10 @@ it('can handle deeply nested actions', function () {
 
 it('can mock actions inside other actions', function () {
     MiddleManAction::make()
-        ->within(function ($root) {
-            $root->only(TestAction::class);
-        })
-        ->handle();
+        ->within(function (Testable $testable) {
+            $testable->only(TestAction::class);
+        })->handle();
 
-    MiddleManAction::make()
-        ->fakeWithin(TestAction::class)
+    expect(SecondAction::make())
+        ->tobeinstanceof(MockInterface::class);
 });
