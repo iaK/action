@@ -34,32 +34,18 @@ abstract class Action
         return $mock;
     }
 
-    public function within(callable $callback)
+    /**
+     * Create a testable instance of the action
+     */
+    public static function test(?callable $callback): Testable
     {
-        $body = new Testable();
-        
-        $callback($body);
-        
-        if (!empty($body->only)) {
-            app()->beforeResolving(function ($object, $app) use ($body) {
-                if (!class_exists($object)) {
-                    return;
-                }
-
-                $reflection = new ReflectionClass($object);
-                if (!$reflection->isSubclassOf(Action::class)) {
-                    return;
-                }
-
-                // Mock all actions that are NOT in the only array
-                if (!in_array($object, $body->only)) {
-                    $object::fake()->shouldReceive('handle');
-                }
-            });
+        $action = static::make();
+        $testable = new Testable($action);
+                
+        if (isset($callback)) {
+            $callback($testable);
         }
 
-        return $this;
+        return $testable;
     }
-
-
 }

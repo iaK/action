@@ -1,11 +1,12 @@
 <?php
 
-use Iak\Action\Testable;
 use Iak\Action\Action;
+use Iak\Action\Testable;
 use Mockery\MockInterface;
+use Iak\Action\Measurement;
 use Iak\Action\Tests\TestClasses\TestAction;
-use Iak\Action\Tests\TestClasses\MiddleManAction;
 use Iak\Action\Tests\TestClasses\SecondAction;
+use Iak\Action\Tests\TestClasses\MiddleManAction;
 use Iak\Action\Tests\TestClasses\DeeplyNestedAction;
 
 it('can be instantiated', function () {
@@ -88,11 +89,29 @@ it('can handle deeply nested actions', function () {
 });
 
 it('can mock actions inside other actions', function () {
-    MiddleManAction::make()
-        ->within(function (Testable $testable) {
+    MiddleManAction::test(function (Testable $testable) {
             $testable->only(TestAction::class);
         })->handle();
 
     expect(SecondAction::make())
         ->tobeinstanceof(MockInterface::class);
+});
+
+it('can measure the duration of an action', function () {
+    TestAction::test(function (Testable $testable) {
+        $testable->measure(callback: function (array $measurements) {
+            expect($measurements)->toHaveCount(1);
+            expect($measurements[0])->toBeInstanceOf(Measurement::class);
+        });
+    })->handle();
+});
+
+it('can measure the duration of an action with a specific action', function () {
+    MiddleManAction::test(function (Testable $testable) {
+        $testable->measure(actions: [TestAction::class], callback: function (array $measurements) {
+            expect($measurements)->toHaveCount(1);
+            expect($measurements[0])->toBeInstanceOf(Measurement::class);
+            expect($measurements[0]->class)->toBe(TestAction::class);
+        });
+    })->handle();
 });

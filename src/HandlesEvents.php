@@ -101,6 +101,11 @@ trait HandlesEvents
         $reflection = new \ReflectionClass(static::class);
         $attributes = $reflection->getAttributes(EmitsEvents::class);
     
+        // If no attributes found, check parent class (for proxy classes)
+        if (empty($attributes) && $parent = $reflection->getParentClass()) {
+            $attributes = $parent->getAttributes(EmitsEvents::class);
+        }
+    
         if (empty($attributes)) {
             return [];
         }
