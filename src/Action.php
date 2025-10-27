@@ -10,6 +10,9 @@ use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
 use ReflectionClass;
 
+/**
+ * @method mixed handle(...$args)
+ */
 abstract class Action
 {
     use HandlesEvents;
@@ -37,7 +40,7 @@ abstract class Action
     /**
      * Create a testable instance of the action
      */
-    public static function test(?callable $callback): Testable
+    public static function test(?callable $callback = null): Testable
     {
         $action = static::make();
         $testable = new Testable($action);

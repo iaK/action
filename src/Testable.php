@@ -24,6 +24,10 @@ class Testable
         $classes = is_array($classes) ? $classes : [$classes];
 
         collect($classes)->map(function ($class) {
+            if (!class_exists($class) && !app()->bound($class)) {
+                throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
+            }
+            
             if (is_string($class)) {
                 return $class::fake()->shouldReceive('handle');
             }
@@ -47,11 +51,33 @@ class Testable
         return $this;
     }
 
-    public function measure(callable $callback, ?array $actions = null) 
+    /**
+     * @param  \Closure|string|array  $actions
+     * @param  ?\Closure|null  $callback
+     */
+    public function measure($actions, ?\Closure $callback = null) 
     {
-        $this->measures = $actions ?? [$this->action::class];
+        if (is_null($callback) && is_callable($actions)) {
+            $this->measurementsCallback = $actions;
+            $this->measures = [$this->action::class];
+            return $this;
+        }
 
+        if (is_null($callback)) {
+            throw new \InvalidArgumentException('A callback is required');
+        }
+
+        $this->measures = is_array($actions) ? $actions : [$actions];
+
+        foreach($this->measures as $measure) {
+            if (!class_exists($measure) && !app()->bound($measure)) {
+                throw new \InvalidArgumentException("The class or alias {$measure} is not bound to the container");
+            }
+        }
+        
         $this->measurementsCallback = $callback;
+
+        return $this;
     }
 
     public function handle(...$args)
@@ -72,7 +98,12 @@ class Testable
         if (isset($this->measurementsCallback)) {
             $measurementsCallback = $this->measurementsCallback;
             
-            $measurementsCallback($this->measurements);
+            // Convert ActionMeasurer instances to Measurement instances
+            $measurements = array_map(function ($measurer) {
+                return $measurer instanceof ActionMeasurer ? $measurer->result() : $measurer;
+            }, $this->measurements);
+            
+            $measurementsCallback($measurements);
         }
 
         return $result;
@@ -120,33 +151,40 @@ class Testable
             if ($measure === $this->action::class) {
                 continue;
             }
+
+            if (!class_exists($measure)) {
+                throw new \InvalidArgumentException("Invalid measure class: $measure");
+            }
             
-            // Create a dynamic proxy class that wraps the action
+            // Create a dynamic proxy class that extends the action and uses ActionMeasurer
             $proxyClass = 'MeasurementProxy_' . md5($measure . spl_object_id($this));
-            
-            if (!class_exists($proxyClass, false)) {
-                $code = <<<PHP
-class $proxyClass extends \\$measure {
-    public \$_testable;
-    public \$_measure;
-    
+            $fqcn = '\\' . ltrim($measure, '\\');
+
+            $code = <<<PHP
+final class $proxyClass extends $fqcn 
+{
+    private \$measurer;
+    private \$action;
+
+    public function __construct(\$testable, \$action) {
+        // Don't call parent constructor - we're using the wrapped action
+        \$this->measurer = new \\Iak\\Action\\ActionMeasurer(\$action);
+        \$this->action = \$action;
+        \$testable->measurements[] = \$this->measurer;
+    }
+
     public function handle(...\$args) {
-        \$start = microtime(true);
-        \$result = parent::handle(...\$args);
-        \$end = microtime(true);
-        \$this->_testable->measurements[] = new \\Iak\\Action\\Measurement(\$this->_measure, \$start, \$end);
-        return \$result;
+        return \$this->measurer->handle(...\$args);
     }
 }
 PHP;
-                eval($code);
-            }
+            eval($code);
             
-            app()->bind($measure, function ($app) use ($proxyClass, $measure) {
-                $proxy = new $proxyClass();
-                $proxy->_testable = $this;
-                $proxy->_measure = $measure;
-                return $proxy;
+            // Resolve the original action BEFORE binding to avoid infinite loop
+            $originalAction = $measure::make();
+            
+            app()->bind($measure, function ($app) use ($proxyClass, $originalAction) {
+                return new $proxyClass($this, $originalAction);
             });
         }
     }
