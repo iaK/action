@@ -13,9 +13,9 @@ class Testable
 
     public array $only = [];
     public array $without = [];
-    public array $measures = [];
 
-    public array $measurements = [];
+    public array $actionsToBeMeasured = [];
+    public array $measuredActions = [];
 
     public \Closure $measurementsCallback;
     
@@ -59,7 +59,7 @@ class Testable
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->measurementsCallback = $actions;
-            $this->measures = [$this->action::class];
+            $this->actionsToBeMeasured = [$this->action::class];
             return $this;
         }
 
@@ -67,9 +67,9 @@ class Testable
             throw new \InvalidArgumentException('A callback is required');
         }
 
-        $this->measures = is_array($actions) ? $actions : [$actions];
+        $this->actionsToBeMeasured = is_array($actions) ? $actions : [$actions];
 
-        foreach($this->measures as $measure) {
+        foreach($this->actionsToBeMeasured as $measure) {
             if (!class_exists($measure) && !app()->bound($measure)) {
                 throw new \InvalidArgumentException("The class or alias {$measure} is not bound to the container");
             }
@@ -82,26 +82,24 @@ class Testable
 
     public function handle(...$args)
     {
-        $this->interceptCalls();
+        $this->handleOnly();
+        $this->interceptMeasurements();
 
-        $action = $this->action;
 
-        if (in_array($this->action::class, $this->measures)) {
-            $start = microtime(true);
-            $result = $action->handle(...$args);
-            $end = microtime(true);
-            $this->measurements[] = new Measurement($this->action::class, $start, $end);
-        } else {
-            $result = $action->handle(...$args);
-        }
+        $result = in_array($this->action::class, $this->actionsToBeMeasured)
+            ? $this->measureMainAction($args)
+            : $this->action->handle(...$args);
 
         if (isset($this->measurementsCallback)) {
             $measurementsCallback = $this->measurementsCallback;
-            
-            // Convert ActionMeasurer instances to Measurement instances
+
             $measurements = array_map(function ($measurer) {
-                return $measurer instanceof ActionMeasurer ? $measurer->result() : $measurer;
-            }, $this->measurements);
+                return match(get_class($measurer)) {
+                    ActionMeasurer::class => $measurer->result(),
+                    Measurement::class => $measurer,
+                    default => throw new \InvalidArgumentException("Invalid measurer class: " . get_class($measurer))
+                };
+            }, $this->measuredActions);
             
             $measurementsCallback($measurements);
         }
@@ -109,83 +107,101 @@ class Testable
         return $result;
     }
 
-    private function interceptCalls(): void
+    private function interceptMeasurements(): void
     {
-        if (!empty($this->only)) {
-            app()->beforeResolving(function ($object, $app) {
-                if (!class_exists($object)) {
-                    return;
-                }
-
-                $reflection = new \ReflectionClass($object);
-
-                if (!$reflection->isSubclassOf(Action::class)) {
-                    return;
-                }
-
-                // Mock all actions that are NOT in the only array
-                if (!in_array($object, $this->only)) {
-                    $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
-
-                    array_shift($trace);
-
-                    foreach ($trace as $frame) {
-                        if (!isset($frame['object']) || $frame['object'] === $this) {
-                            continue;
-                        }
-                
-                        $ancestor = $frame['object'];
-                        
-                        if ($ancestor instanceof ($this->action::class)) {
-                            $object::fake()->shouldReceive('handle');
-                            break;
-                        }
-                    }
-                }
-            });
-        }
-
-        // Intercept nested action resolution for measurement
-        foreach ($this->measures as $measure) {
+        foreach ($this->actionsToBeMeasured as $actionToBeMeasured) {
             // Skip the main action - it's measured differently
-            if ($measure === $this->action::class) {
+            if ($actionToBeMeasured === $this->action::class) {
                 continue;
             }
 
-            if (!class_exists($measure)) {
-                throw new \InvalidArgumentException("Invalid measure class: $measure");
+            if (!class_exists($actionToBeMeasured)) {
+                throw new \InvalidArgumentException("Invalid measure class: $actionToBeMeasured");
             }
-            
-            // Create a dynamic proxy class that extends the action and uses ActionMeasurer
-            $proxyClass = 'MeasurementProxy_' . md5($measure . spl_object_id($this));
-            $fqcn = '\\' . ltrim($measure, '\\');
+                        
+            // Resolve the original action BEFORE binding to avoid infinite loop
+            $originalAction = $actionToBeMeasured::make();
 
-            $code = <<<PHP
-final class $proxyClass extends $fqcn 
-{
+            app()->bind($actionToBeMeasured, fn () => 
+                 new ($this->createProxyClass($actionToBeMeasured))($this, $originalAction)
+            );
+        }
+    }
+
+    private function createProxyClass(string $measure): string
+    {
+        // Create a dynamic proxy class that extends the action and uses ActionMeasurer
+        $proxyClass = 'MeasurementProxy_' . md5($measure . spl_object_id($this));
+        $fqcn = '\\' . ltrim($measure, '\\');
+
+        if (!class_exists($measure)) {
+            throw new \InvalidArgumentException("Invalid measure class: $measure");
+        }
+
+        $code = <<<PHP
+    final class $proxyClass extends $fqcn 
+    {
     private \$measurer;
     private \$action;
 
     public function __construct(\$testable, \$action) {
-        // Don't call parent constructor - we're using the wrapped action
-        \$this->measurer = new \\Iak\\Action\\ActionMeasurer(\$action);
-        \$this->action = \$action;
-        \$testable->measurements[] = \$this->measurer;
+    // Don't call parent constructor - we're using the wrapped action
+    \$this->measurer = new \\Iak\\Action\\ActionMeasurer(\$action);
+    \$this->action = \$action;
+    \$testable->measuredActions[] = \$this->measurer;
     }
 
     public function handle(...\$args) {
-        return \$this->measurer->handle(...\$args);
+    return \$this->measurer->handle(...\$args);
     }
-}
-PHP;
-            eval($code);
-            
-            // Resolve the original action BEFORE binding to avoid infinite loop
-            $originalAction = $measure::make();
-            
-            app()->bind($measure, function ($app) use ($proxyClass, $originalAction) {
-                return new $proxyClass($this, $originalAction);
-            });
+    }
+    PHP;
+        eval($code);
+
+        return $proxyClass;
+    }
+
+    private function handleOnly(): void
+    {
+        if (empty($this->only)) {
+            return;
         }
+
+        app()->beforeResolving(function ($object) {
+            if (!class_exists($object)) {
+                return;
+            }
+
+            if (!(new \ReflectionClass($object))->isSubclassOf(Action::class)) {
+                return;
+            }
+
+            if (in_array($object, $this->only)) {
+                return;
+            }
+
+            foreach (debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT) as $frame) {
+                if (!isset($frame['object']) || $frame['object'] === $this) {
+                    continue;
+                }
+
+                if (!$frame['object'] instanceof ($this->action::class)) {
+                    continue;
+                }
+        
+                $object::fake()->shouldReceive('handle');
+                break;
+            }
+        });
+    }
+
+    private function measureMainAction($args)
+    {
+        $start = microtime(true);
+        $result = $this->action->handle(...$args);
+        $end = microtime(true);
+        $this->measuredActions[] = new Measurement($this->action::class, $start, $end);
+
+        return $result;
     }
 }
