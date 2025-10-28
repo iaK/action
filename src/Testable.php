@@ -23,13 +23,20 @@ class Testable
     {
         $classes = is_array($classes) ? $classes : [$classes];
 
-        collect($classes)->map(function ($class) {
+        collect($classes)->map(function ($class, $key) {
+            [$class, $returnValue] = $this->getClassAndReturnValue($class, $key);
+
             if (!class_exists($class) && !app()->bound($class)) {
                 throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
             }
             
             if (is_string($class)) {
-                return $class::fake()->shouldReceive('handle');
+                $mock = $class::fake()->shouldReceive('handle');
+                if ($returnValue) {
+                    $mock->andReturn($returnValue);
+                }
+
+                return $mock;
             }
 
             if ($class instanceof MockInterface || $class instanceof LegacyMockInterface) {
@@ -203,5 +210,18 @@ class Testable
         $this->measuredActions[] = new Measurement($this->action::class, $start, $end);
 
         return $result;
+    }
+
+    private function getClassAndReturnValue($class, $key): array
+    {
+        if (is_string($key)) {
+            return [$key, $class];
+        }
+
+        if (is_array($class)) {
+            return [array_key_first($class), array_values($class)[0]];
+        }
+
+        return [$class, null];
     }
 }

@@ -52,6 +52,32 @@ it('can use without method with array of classes', function () {
     expect(ClosureAction::make())->toBeInstanceOf(MockInterface::class);
 });
 
+
+it('can use without method and specify return value', function () {
+    $result = ClosureAction::test()
+        ->without([SayHelloAction::class => 'Mocked hello, World!'])
+        ->handle(function () {
+            return SayHelloAction::make()->handle();
+        });
+    
+    expect($result)->toBe('Mocked hello, World!');
+});
+
+it('can use without method and specify return value for several actions', function () {
+    $result = ClosureAction::test()
+        ->without([
+            // Not nested
+            SayHelloAction::class => 'Mocked hello, World!',
+            // Nested
+            [FireEventAction::class => 'Mocked event!'],
+        ])
+        ->handle(function () {
+            return SayHelloAction::make()->handle() . ' ' . FireEventAction::make()->handle();
+        });
+    
+    expect($result)->toBe('Mocked hello, World! Mocked event!');
+});
+
 it('can use only method with array parameter', function () {
     ClosureAction::test()
         ->only([FireEventAction::class, SayHelloAction::class])
