@@ -1,10 +1,13 @@
 <?php
 
-namespace Iak\Action;
+namespace Iak\Action\Testing;
 
+use Iak\Action\Action;
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
-use Illuminate\Support\Facades\DB;
+use Iak\Action\Testing\Measurement;
+use Iak\Action\Testing\QueryListener;
+use Iak\Action\Testing\RuntimeMeasurer;
 
 class Testable
 {
@@ -97,7 +100,7 @@ class Testable
      * @param  \Closure|string|array  $actions
      * @param  ?\Closure|null  $callback
      */
-    public function recordDbCalls($actions, ?\Closure $callback = null) 
+    public function queries($actions, ?\Closure $callback = null) 
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->dbCallsCallback = $actions;
@@ -127,7 +130,7 @@ class Testable
     {
         $this->handleOnly();
         $this->interceptMeasurements();
-        $this->interceptDbCalls();
+        $this->interceptDatabaseCalls();
 
         if (in_array($this->action::class, $this->actionsToBeMeasured)) {
             $result = $this->measureMainAction($args);
@@ -136,7 +139,7 @@ class Testable
             if (!$this->queryListener) {
                 $this->queryListener = new QueryListener();
             }
-            $result = $this->queryListener->whileEnabled(function () use ($args) {
+            $result = $this->queryListener->listen(function () use ($args) {
                 return $this->action->handle(...$args);
             });
         } else {
@@ -148,7 +151,7 @@ class Testable
 
             $measurements = array_map(function ($measurer) {
                 return match(get_class($measurer)) {
-                    ActionMeasurer::class => $measurer->result(),
+                    RuntimeMeasurer::class => $measurer->result(),
                     Measurement::class => $measurer,
                     default => throw new \InvalidArgumentException("Invalid measurer class: " . get_class($measurer))
                 };
@@ -181,12 +184,12 @@ class Testable
             $originalAction = $actionToBeMeasured::make();
 
             app()->bind($actionToBeMeasured, fn () => 
-                 new ($this->createProxyClass($actionToBeMeasured))($this, $originalAction)
+                 new ($this->createMeasureProxyClass($actionToBeMeasured))($this, $originalAction)
             );
         }
     }
 
-    private function interceptDbCalls(): void
+    private function interceptDatabaseCalls(): void
     {
         if (empty($this->actionsToRecordDbCalls)) {
             return;
@@ -209,12 +212,12 @@ class Testable
             $originalAction = $actionToRecordDbCalls::make();
 
             app()->bind($actionToRecordDbCalls, fn () => 
-                 new ($this->createDbCallProxyClass($actionToRecordDbCalls))($this, $originalAction)
+                 new ($this->createDatabaseProxyClass($actionToRecordDbCalls))($this, $originalAction)
             );
         }
     }
 
-    private function createProxyClass(string $measure): string
+    private function createMeasureProxyClass(string $measure): string
     {
         // Create a dynamic proxy class that extends the action and uses ActionMeasurer
         $proxyClass = 'MeasurementProxy_' . md5($measure . spl_object_id($this));
@@ -227,7 +230,7 @@ class Testable
         $code = <<<PHP
     final class $proxyClass extends $fqcn 
     {
-    use \\Iak\\Action\\Traits\\MeasurementProxyTrait;
+    use \\Iak\\Action\\Testing\\Traits\\MeasurementProxyTrait;
     }
     PHP;
         eval($code);
@@ -235,10 +238,10 @@ class Testable
         return $proxyClass;
     }
 
-    private function createDbCallProxyClass(string $actionToRecord): string
+    private function createDatabaseProxyClass(string $actionToRecord): string
     {
         // Create a dynamic proxy class that extends the action and records database calls
-        $proxyClass = 'DbCallProxy_' . md5($actionToRecord . spl_object_id($this));
+        $proxyClass = 'DatabaseProxy_' . md5($actionToRecord . spl_object_id($this));
         $fqcn = '\\' . ltrim($actionToRecord, '\\');
 
         if (!class_exists($actionToRecord)) {
@@ -248,7 +251,7 @@ class Testable
         $code = <<<PHP
     final class $proxyClass extends $fqcn 
     {
-    use \\Iak\\Action\\Traits\\DatabaseCallProxyTrait;
+    use \\Iak\\Action\\Testing\\Traits\\DatabaseCallProxyTrait;
     }
     PHP;
         eval($code);

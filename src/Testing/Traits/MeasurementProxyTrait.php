@@ -1,8 +1,8 @@
 <?php
 
-namespace Iak\Action\Traits;
+namespace Iak\Action\Testing\Traits;
 
-use Iak\Action\ActionMeasurer;
+use Iak\Action\Testing\RuntimeMeasurer;
 
 trait MeasurementProxyTrait
 {
@@ -12,7 +12,7 @@ trait MeasurementProxyTrait
     public function __construct($testable, $action)
     {
         // Don't call parent constructor - we're using the wrapped action
-        $this->measurer = new ActionMeasurer($action);
+        $this->measurer = new RuntimeMeasurer($action);
         $this->action = $action;
         $testable->measuredActions[] = $this->measurer;
     }

@@ -1,8 +1,8 @@
 <?php
 
-namespace Iak\Action\Traits;
+namespace Iak\Action\Testing\Traits;
 
-use Iak\Action\QueryListener;
+use Iak\Action\Testing\QueryListener;
 
 trait DatabaseCallProxyTrait
 {
@@ -22,7 +22,7 @@ trait DatabaseCallProxyTrait
             $this->testable->queryListener = new QueryListener();
         }
 
-        return $this->testable->queryListener->whileEnabled(function () use ($args) {
+        return $this->testable->queryListener->listen(function () use ($args) {
             return $this->action->handle(...$args);
         });
     }

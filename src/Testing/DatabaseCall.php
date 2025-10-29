@@ -1,6 +1,6 @@
 <?php
 
-namespace Iak\Action;
+namespace Iak\Action\Testing;
 
 use Carbon\CarbonInterval;
 

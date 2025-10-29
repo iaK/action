@@ -1,6 +1,6 @@
 <?php
 
-namespace Iak\Action;
+namespace Iak\Action\Testing;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Events\QueryExecuted;
@@ -30,30 +30,31 @@ class QueryListener
         DB::listen($this->listener);
     }
 
-    public function enable(): void
+
+    public function listen(callable $callback): mixed
     {
         $this->enabled = true;
-    }
-
-    public function disable(): void
-    {
-        $this->enabled = false;
-    }
-
-    public function whileEnabled(callable $callback): mixed
-    {
-        $this->enable();
 
         try {
             return $callback();
         } finally {
-            $this->disable();
+            $this->enabled = false;
         }
     }
 
     public function getQueries(): array
     {
         return $this->queries;
+    }
+
+    public function getCallCount(): int
+    {
+        return count($this->queries);
+    }
+
+    public function getTotalTime(): float
+    {
+        return array_sum(array_map(fn($call) => $call->time, $this->queries));
     }
 
     public function clear(): void

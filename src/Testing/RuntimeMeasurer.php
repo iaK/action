@@ -1,8 +1,11 @@
 <?php
 
-namespace Iak\Action;
+namespace Iak\Action\Testing;
 
-class ActionMeasurer
+use Iak\Action\Action;
+use Iak\Action\Testing\Measurement;
+
+class RuntimeMeasurer
 {
     public string $start;
     public string $end;

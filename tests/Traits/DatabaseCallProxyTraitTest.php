@@ -1,8 +1,7 @@
 <?php
 
-use Iak\Action\Traits\DatabaseCallProxyTrait;
 use Iak\Action\Tests\TestClasses\DatabaseAction;
-use Iak\Action\QueryListener;
+use Iak\Action\Testing\QueryListener;
 
 it('can be used in a proxy class', function () {
     // Create a test proxy class that uses the trait
@@ -10,7 +9,7 @@ it('can be used in a proxy class', function () {
     $code = <<<PHP
     final class $proxyClass extends \\Iak\\Action\\Tests\\TestClasses\\DatabaseAction 
     {
-    use \\Iak\\Action\\Traits\\DatabaseCallProxyTrait;
+    use \\Iak\\Action\\Testing\\Traits\\DatabaseCallProxyTrait;
     }
     PHP;
     eval($code);
@@ -30,7 +29,7 @@ it('can handle action execution through the proxy', function () {
     $code = <<<PHP
     final class $proxyClass extends \\Iak\\Action\\Tests\\TestClasses\\DatabaseAction 
     {
-    use \\Iak\\Action\\Traits\\DatabaseCallProxyTrait;
+    use \\Iak\\Action\\Testing\\Traits\\DatabaseCallProxyTrait;
     }
     PHP;
     eval($code);

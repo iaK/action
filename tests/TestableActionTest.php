@@ -1,15 +1,14 @@
 <?php
 
-use Iak\Action\Testable;
+use Iak\Action\Testing\Testable;
 use Mockery\MockInterface;
-use Iak\Action\Measurement;
-use Iak\Action\DatabaseCall;
+use Iak\Action\Testing\Measurement;
+use Iak\Action\Testing\DatabaseCall;
 use Illuminate\Support\Facades\DB;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\DatabaseAction;
 use Iak\Action\Tests\TestClasses\SayHelloAction;
 use Iak\Action\Tests\TestClasses\FireEventAction;
-use Iak\Action\Tests\TestClasses\MiddleManAction;
 
 it('can create testable action with callback', function () {
     $callbackExecuted = false;
@@ -171,7 +170,7 @@ it('throws exception when measure method receives invalid class', function () {
 
 it('can record database calls for the calling action', function () {
     $result = DatabaseAction::test()
-        ->recordDbCalls(function (array $dbCalls) {
+        ->queries(function (array $dbCalls) {
             expect($dbCalls)->toBeGreaterThanOrEqual(2);
             
             // Find the SELECT queries (ignoring CREATE TABLE and INSERT)
@@ -192,7 +191,7 @@ it('can record database calls for the calling action', function () {
 
 it('can record database calls for a single action', function () {
     $result = ClosureAction::test()
-        ->recordDbCalls(ClosureAction::class, function (array $dbCalls) {
+        ->queries(ClosureAction::class, function (array $dbCalls) {
             expect($dbCalls)->toHaveCount(1);
         })
         ->handle(function () {
@@ -208,7 +207,7 @@ it('can record database calls for a single action', function () {
 
 it('can record database calls for a specific action', function ($actions) {
     $result = ClosureAction::test()
-        ->recordDbCalls($actions, function (array $dbCalls) {
+        ->queries($actions, function (array $dbCalls) {
             expect($dbCalls)->toBeGreaterThanOrEqual(2);
             
             // Find the SELECT queries
@@ -232,7 +231,7 @@ it('can record database calls for a specific action', function ($actions) {
 
 it('can convert database call to string', function () {
     DatabaseAction::test()
-        ->recordDbCalls(function (array $dbCalls) {
+        ->queries(function (array $dbCalls) {
             $dbCall = $dbCalls[0];
             $string = (string) $dbCall;
             expect($string)->toContain('Query:');
@@ -243,12 +242,12 @@ it('can convert database call to string', function () {
 });
 
 it('throws exception when recordDbCalls method receives invalid callback', function () {
-    expect(fn () => ClosureAction::test()->recordDbCalls(DatabaseAction::class))
+    expect(fn () => ClosureAction::test()->queries(DatabaseAction::class))
         ->toThrow(InvalidArgumentException::class, 'A callback is required');
 });
 
 it('throws exception when recordDbCalls method receives invalid class', function () {
-    expect(fn () => ClosureAction::test()->recordDbCalls('NonExistentClass', function () {}))
+    expect(fn () => ClosureAction::test()->queries('NonExistentClass', function () {}))
         ->toThrow(Exception::class);
 });
 

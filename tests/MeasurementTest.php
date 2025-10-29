@@ -1,7 +1,7 @@
 <?php
 
 use Carbon\CarbonInterval;
-use Iak\Action\Measurement;
+use Iak\Action\Testing\Measurement;
 
 it('can be instantiated with class name and timestamps', function () {
     $measurement = new Measurement('TestClass', 1.0, 2.0);

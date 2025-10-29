@@ -1,21 +1,21 @@
 <?php
 
-use Iak\Action\ActionMeasurer;
-use Iak\Action\Measurement;
+use Iak\Action\Testing\RuntimeMeasurer;
+use Iak\Action\Testing\Measurement;
 use Iak\Action\Tests\TestClasses\SayHelloAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\MultiArgAction;
 
 it('can be instantiated with an action', function () {
     $action = new SayHelloAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
-    expect($measurer)->toBeInstanceOf(ActionMeasurer::class);
+    expect($measurer)->toBeInstanceOf(RuntimeMeasurer::class);
 });
 
 it('handles action execution and measures time', function () {
     $action = new SayHelloAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
     $result = $measurer->handle();
 
@@ -27,7 +27,7 @@ it('handles action execution and measures time', function () {
 
 it('handles action with arguments', function () {
     $action = new ClosureAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
     $result = $measurer->handle(function () {
         return 'Custom result';
@@ -40,7 +40,7 @@ it('handles action with arguments', function () {
 
 it('handles action with multiple arguments', function () {
     $action = new MultiArgAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
     $result = $measurer->handle('Hello', 'World', 'Test');
 
@@ -51,7 +51,7 @@ it('handles action with multiple arguments', function () {
 
 it('creates measurement result with correct class name', function () {
     $action = new SayHelloAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
     $measurer->handle();
     $measurement = $measurer->result();
@@ -64,7 +64,7 @@ it('creates measurement result with correct class name', function () {
 
 it('measures execution time accurately', function () {
     $action = new ClosureAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
     // Create a closure that sleeps for a specific duration
     $measurer->handle(function () {
@@ -80,7 +80,7 @@ it('measures execution time accurately', function () {
 
 it('handles action that throws exception', function () {
     $action = new ClosureAction();
-    $measurer = new ActionMeasurer($action);
+    $measurer = new RuntimeMeasurer($action);
 
     expect(function () use ($measurer) {
         $measurer->handle(function () {
