@@ -4,6 +4,7 @@ namespace Iak\Action;
 
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
+use Illuminate\Support\Facades\DB;
 
 class Testable
 {
@@ -18,6 +19,11 @@ class Testable
     public array $measuredActions = [];
 
     public \Closure $measurementsCallback;
+
+    public array $actionsToRecordDbCalls = [];
+    public ?QueryListener $queryListener = null;
+    public \Closure $dbCallsCallback;
+    public bool $recordMainActionDbCalls = false;
     
     public function without(string|object|array $classes): static
     {
@@ -87,15 +93,55 @@ class Testable
         return $this;
     }
 
+    /**
+     * @param  \Closure|string|array  $actions
+     * @param  ?\Closure|null  $callback
+     */
+    public function recordDbCalls($actions, ?\Closure $callback = null) 
+    {
+        if (is_null($callback) && is_callable($actions)) {
+            $this->dbCallsCallback = $actions;
+            $this->actionsToRecordDbCalls = [$this->action::class];
+            $this->recordMainActionDbCalls = true;
+            return $this;
+        }
+
+        if (is_null($callback)) {
+            throw new \InvalidArgumentException('A callback is required');
+        }
+
+        $this->actionsToRecordDbCalls = is_array($actions) ? $actions : [$actions];
+
+        foreach($this->actionsToRecordDbCalls as $record) {
+            if (!class_exists($record) && !app()->bound($record)) {
+                throw new \InvalidArgumentException("The class or alias {$record} is not bound to the container");
+            }
+        }
+        
+        $this->dbCallsCallback = $callback;
+
+        return $this;
+    }
+
     public function handle(...$args)
     {
         $this->handleOnly();
         $this->interceptMeasurements();
+        $this->interceptDbCalls();
 
-
-        $result = in_array($this->action::class, $this->actionsToBeMeasured)
-            ? $this->measureMainAction($args)
-            : $this->action->handle(...$args);
+        if (in_array($this->action::class, $this->actionsToBeMeasured)) {
+            $result = $this->measureMainAction($args);
+        } elseif ($this->recordMainActionDbCalls) {
+            // Record database calls for the main action using the shorthand syntax
+            if (!$this->queryListener) {
+                $this->queryListener = new QueryListener();
+            }
+            $result = $this->queryListener->whileEnabled(function () use ($args) {
+                return $this->action->handle(...$args);
+            });
+        } else {
+            $result = $this->action->handle(...$args);
+        }
 
         if (isset($this->measurementsCallback)) {
             $measurementsCallback = $this->measurementsCallback;
@@ -109,6 +155,11 @@ class Testable
             }, $this->measuredActions);
             
             $measurementsCallback($measurements);
+        }
+
+        if (isset($this->dbCallsCallback)) {
+            $dbCallsCallback = $this->dbCallsCallback;
+            $dbCallsCallback($this->queryListener?->getQueries() ?? []);
         }
 
         return $result;
@@ -135,6 +186,34 @@ class Testable
         }
     }
 
+    private function interceptDbCalls(): void
+    {
+        if (empty($this->actionsToRecordDbCalls)) {
+            return;
+        }
+
+        // Set up database query logging
+        $this->queryListener = new QueryListener();
+
+        foreach ($this->actionsToRecordDbCalls as $actionToRecordDbCalls) {
+            // Skip the main action if using shorthand syntax
+            if ($actionToRecordDbCalls === $this->action::class && $this->recordMainActionDbCalls) {
+                continue;
+            }
+
+            if (!class_exists($actionToRecordDbCalls)) {
+                throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
+            }
+                        
+            // Resolve the original action BEFORE binding to avoid infinite loop
+            $originalAction = $actionToRecordDbCalls::make();
+
+            app()->bind($actionToRecordDbCalls, fn () => 
+                 new ($this->createDbCallProxyClass($actionToRecordDbCalls))($this, $originalAction)
+            );
+        }
+    }
+
     private function createProxyClass(string $measure): string
     {
         // Create a dynamic proxy class that extends the action and uses ActionMeasurer
@@ -148,19 +227,28 @@ class Testable
         $code = <<<PHP
     final class $proxyClass extends $fqcn 
     {
-    private \$measurer;
-    private \$action;
+    use \\Iak\\Action\\Traits\\MeasurementProxyTrait;
+    }
+    PHP;
+        eval($code);
 
-    public function __construct(\$testable, \$action) {
-    // Don't call parent constructor - we're using the wrapped action
-    \$this->measurer = new \\Iak\\Action\\ActionMeasurer(\$action);
-    \$this->action = \$action;
-    \$testable->measuredActions[] = \$this->measurer;
+        return $proxyClass;
     }
 
-    public function handle(...\$args) {
-    return \$this->measurer->handle(...\$args);
-    }
+    private function createDbCallProxyClass(string $actionToRecord): string
+    {
+        // Create a dynamic proxy class that extends the action and records database calls
+        $proxyClass = 'DbCallProxy_' . md5($actionToRecord . spl_object_id($this));
+        $fqcn = '\\' . ltrim($actionToRecord, '\\');
+
+        if (!class_exists($actionToRecord)) {
+            throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecord");
+        }
+
+        $code = <<<PHP
+    final class $proxyClass extends $fqcn 
+    {
+    use \\Iak\\Action\\Traits\\DatabaseCallProxyTrait;
     }
     PHP;
         eval($code);
