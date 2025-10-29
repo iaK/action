@@ -7,6 +7,7 @@ use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
 use Iak\Action\Testing\Measurement;
 use Iak\Action\Testing\QueryListener;
+use Iak\Action\Testing\LogListener;
 use Iak\Action\Testing\RuntimeMeasurer;
 
 class Testable
@@ -27,6 +28,11 @@ class Testable
     public ?QueryListener $queryListener = null;
     public \Closure $dbCallsCallback;
     public bool $recordMainActionDbCalls = false;
+    
+    public array $actionsToRecordLogs = [];
+    public ?LogListener $logListener = null;
+    public \Closure $logsCallback;
+    public bool $recordMainActionLogs = false;
     
     public function without(string|object|array $classes): static
     {
@@ -126,11 +132,42 @@ class Testable
         return $this;
     }
 
+    /**
+     * @param  \Closure|string|array  $actions
+     * @param  ?\Closure|null  $callback
+     */
+    public function logs($actions, ?\Closure $callback = null) 
+    {
+        if (is_null($callback) && is_callable($actions)) {
+            $this->logsCallback = $actions;
+            $this->actionsToRecordLogs = [$this->action::class];
+            $this->recordMainActionLogs = true;
+            return $this;
+        }
+
+        if (is_null($callback)) {
+            throw new \InvalidArgumentException('A callback is required');
+        }
+
+        $this->actionsToRecordLogs = is_array($actions) ? $actions : [$actions];
+
+        foreach($this->actionsToRecordLogs as $record) {
+            if (!class_exists($record) && !app()->bound($record)) {
+                throw new \InvalidArgumentException("The class or alias {$record} is not bound to the container");
+            }
+        }
+        
+        $this->logsCallback = $callback;
+
+        return $this;
+    }
+
     public function handle(...$args)
     {
         $this->handleOnly();
         $this->interceptMeasurements();
         $this->interceptDatabaseCalls();
+        $this->interceptLogs();
 
         if (in_array($this->action::class, $this->actionsToBeMeasured)) {
             $result = $this->measureMainAction($args);
@@ -140,6 +177,14 @@ class Testable
                 $this->queryListener = new QueryListener();
             }
             $result = $this->queryListener->listen(function () use ($args) {
+                return $this->action->handle(...$args);
+            });
+        } elseif ($this->recordMainActionLogs) {
+            // Record logs for the main action using the shorthand syntax
+            if (!$this->logListener) {
+                $this->logListener = new LogListener();
+            }
+            $result = $this->logListener->listen(function () use ($args) {
                 return $this->action->handle(...$args);
             });
         } else {
@@ -163,6 +208,11 @@ class Testable
         if (isset($this->dbCallsCallback)) {
             $dbCallsCallback = $this->dbCallsCallback;
             $dbCallsCallback($this->queryListener?->getQueries() ?? []);
+        }
+
+        if (isset($this->logsCallback)) {
+            $logsCallback = $this->logsCallback;
+            $logsCallback($this->logListener?->getLogs() ?? []);
         }
 
         return $result;
@@ -217,6 +267,34 @@ class Testable
         }
     }
 
+    private function interceptLogs(): void
+    {
+        if (empty($this->actionsToRecordLogs)) {
+            return;
+        }
+
+        // Set up log capturing
+        $this->logListener = new LogListener();
+
+        foreach ($this->actionsToRecordLogs as $actionToRecordLogs) {
+            // Skip the main action if using shorthand syntax
+            if ($actionToRecordLogs === $this->action::class && $this->recordMainActionLogs) {
+                continue;
+            }
+
+            if (!class_exists($actionToRecordLogs)) {
+                throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecordLogs");
+            }
+                        
+            // Resolve the original action BEFORE binding to avoid infinite loop
+            $originalAction = $actionToRecordLogs::make();
+
+            app()->bind($actionToRecordLogs, fn () => 
+                 new ($this->createLogProxyClass($actionToRecordLogs))($this, $originalAction)
+            );
+        }
+    }
+
     private function createMeasureProxyClass(string $measure): string
     {
         // Create a dynamic proxy class that extends the action and uses ActionMeasurer
@@ -252,6 +330,27 @@ class Testable
     final class $proxyClass extends $fqcn 
     {
     use \\Iak\\Action\\Testing\\Traits\\DatabaseCallProxyTrait;
+    }
+    PHP;
+        eval($code);
+
+        return $proxyClass;
+    }
+
+    private function createLogProxyClass(string $actionToRecord): string
+    {
+        // Create a dynamic proxy class that extends the action and records logs
+        $proxyClass = 'LogProxy_' . md5($actionToRecord . spl_object_id($this));
+        $fqcn = '\\' . ltrim($actionToRecord, '\\');
+
+        if (!class_exists($actionToRecord)) {
+            throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecord");
+        }
+
+        $code = <<<PHP
+    final class $proxyClass extends $fqcn 
+    {
+    use \\Iak\\Action\\Testing\\Traits\\LogProxyTrait;
     }
     PHP;
         eval($code);
