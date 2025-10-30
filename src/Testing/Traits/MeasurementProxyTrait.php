@@ -12,8 +12,9 @@ trait MeasurementProxyTrait
     public function __construct($testable, $action)
     {
         // Don't call parent constructor - we're using the wrapped action
-        $this->measurer = new RuntimeMeasurer($action);
         $this->action = $action;
+        // Every proxy gets its own measurer and reports independently
+        $this->measurer = new RuntimeMeasurer($action, $this);
         $testable->measuredActions[] = $this->measurer;
     }
 

@@ -5,6 +5,7 @@ use Iak\Action\Testing\Results\Measurement;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\FireEventAction;
 use Iak\Action\Tests\TestClasses\SayHelloAction;
+use Iak\Action\Tests\TestClasses\TestMemoryAction;
 
 it('can measure the duration of an action', function () {
     $result = ClosureAction::test()
@@ -63,6 +64,102 @@ it('can convert measurement to string', function () {
             expect((string) $measurement)->toBe("{$measurement->class} took {$measurement->duration()->totalMilliseconds}ms");
         })
         ->handle();
+});
+
+it('can measure memory usage of an action', function () {
+    $result = ClosureAction::test()
+        ->measure(function (array $measurements) {
+            expect($measurements)->toHaveCount(1);
+            $measurement = $measurements[0];
+            expect($measurement->class)->toBe(ClosureAction::class);
+            expect($measurement->startMemory)->toBeInt();
+            expect($measurement->endMemory)->toBeInt();
+            expect($measurement->peakMemory)->toBeInt();
+            expect($measurement->endMemory)->toBeGreaterThanOrEqual($measurement->startMemory);
+            expect($measurement->peakMemory)->toBeGreaterThanOrEqual($measurement->endMemory);
+        })
+        ->handle(function () {
+            // Allocate some memory
+            $data = str_repeat('x', 1024 * 512); // 512KB string
+            return strlen($data);
+        });
+
+    expect($result)->toBe(1024 * 512);
+});
+
+it('can measure memory usage of multiple actions', function () {
+    ClosureAction::test()
+        ->measure([FireEventAction::class, SayHelloAction::class], function (array $measurements) {
+            expect($measurements)->toHaveCount(2);
+            
+            foreach ($measurements as $measurement) {
+                expect($measurement->startMemory)->toBeInt();
+                expect($measurement->endMemory)->toBeInt();
+                expect($measurement->peakMemory)->toBeInt();
+                expect($measurement->endMemory)->toBeGreaterThanOrEqual($measurement->startMemory);
+                expect($measurement->peakMemory)->toBeGreaterThanOrEqual($measurement->endMemory);
+            }
+        })
+        ->handle(function () {
+            SayHelloAction::make()->handle();
+            FireEventAction::make()->handle();
+        });
+});
+
+it('includes memory info in measurement string representation when memory is used', function () {
+    ClosureAction::test()
+        ->measure(function (array $measurements) {
+            $measurement = $measurements[0];
+            $string = (string) $measurement;
+            expect($string)->toContain('took');
+            expect($string)->toContain('ms');
+            
+            // Memory info should be included if memory was actually used
+            if ($measurement->memoryUsed('B') > 0 || $measurement->peakMemory > 0) {
+                expect($string)->toContain('memory:');
+                expect($string)->toContain('peak:');
+            }
+        })
+        ->handle(function () {
+            // Allocate some memory to ensure memory tracking is active
+            $data = str_repeat('x', 1024 * 100); // 100KB string
+            return strlen($data);
+        });
+});
+
+it('can access memory records through measurement', function () {
+    ClosureAction::test()
+        ->measure(ClosureAction::class, function (array $measurements) {
+            expect($measurements)->toHaveCount(1);
+            
+            expect($measurements[0]->records()[0]['name'])->toBe('start');
+            expect($measurements[0]->records()[1]['name'])->toBe('end');
+        })
+        ->handle(function () {
+            ClosureAction::make()->handle(function ($action) {
+                $action->recordMemory('start');
+                $action->recordMemory('end');
+            });
+        });
+});
+
+it('can record memory with simple action', function () {
+    $result = ClosureAction::test()
+        ->measure(ClosureAction::class, function (array $measurements) {
+            expect($measurements)->toHaveCount(1);
+            $measurement = $measurements[0];
+            $records = $measurement->records();
+            expect($records[0]['name'])->toBe('start');
+        })
+        ->handle(function () {
+            $value = TestMemoryAction::make()->handle();
+            ClosureAction::make()->handle(function ($action) {
+                $action->recordMemory('start');
+            });
+            return $value;
+        });
+
+    expect($result)->toBe(1024 * 300);
 });
 
 it('throws exception when measure method receives invalid callback', function () {

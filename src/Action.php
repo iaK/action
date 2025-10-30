@@ -2,6 +2,7 @@
 
 namespace Iak\Action;
 
+use Illuminate\Support\Facades\Event;
 use Mockery;
 use Iak\Action\Testing\Testable;
 use Mockery\MockInterface;
@@ -13,6 +14,17 @@ use Mockery\LegacyMockInterface;
 abstract class Action
 {
     use HandlesEvents;
+
+    /**
+     * Record memory usage at a specific point in the action
+     */
+    public function recordMemory(string $name): void
+    {
+        // Dispatch an instance-scoped Laravel event so any measurer
+        // attached to this specific instance can record the memory point.
+        $eventName = 'action.record_memory.' . spl_object_hash($this);
+        Event::dispatch($eventName, [$name]);
+    }
 
     /**
      * Create a new instance of the action

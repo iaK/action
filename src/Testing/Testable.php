@@ -21,7 +21,7 @@ class Testable
 
     public array $actionsToBeMeasured = [];
     public array $measuredActions = [];
-
+    public bool $measureSelf = false;
     public \Closure $measurementsCallback;
 
     public array $actionsToRecordDbCalls = [];
@@ -81,7 +81,7 @@ class Testable
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->measurementsCallback = $actions;
-            $this->actionsToBeMeasured = [$this->action::class];
+            $this->measureSelf = true;
             return $this;
         }
 
@@ -169,7 +169,7 @@ class Testable
         $this->interceptDatabaseCalls();
         $this->interceptLogs();
 
-        if (in_array($this->action::class, $this->actionsToBeMeasured)) {
+        if ($this->measureSelf) {
             $result = $this->measureMainAction($args);
         } elseif ($this->recordMainActionDbCalls) {
             // Record database calls for the main action using the shorthand syntax
@@ -221,11 +221,6 @@ class Testable
     private function interceptMeasurements(): void
     {
         foreach ($this->actionsToBeMeasured as $actionToBeMeasured) {
-            // Skip the main action - it's measured differently
-            if ($actionToBeMeasured === $this->action::class) {
-                continue;
-            }
-
             if (!class_exists($actionToBeMeasured)) {
                 throw new \InvalidArgumentException("Invalid measure class: $actionToBeMeasured");
             }
@@ -247,11 +242,6 @@ class Testable
         $this->queryListener = new QueryListener();
 
         foreach ($this->actionsToRecordDbCalls as $actionToRecordDbCalls) {
-            // Skip the main action if using shorthand syntax
-            if ($actionToRecordDbCalls === $this->action::class && $this->recordMainActionDbCalls) {
-                continue;
-            }
-
             if (!class_exists($actionToRecordDbCalls)) {
                 throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
             }
@@ -294,13 +284,13 @@ class Testable
         app()->bind($actionClass, function () use ($actionClass, $proxyClass) {
             // Temporarily unbind to resolve the original action from the container
             app()->offsetUnset($actionClass);
-            
+
             // Resolve the original action from the container
             $originalAction = $actionClass::make();
-            
+
             // Rebind our proxy for future resolutions
             $this->bindProxyClass($actionClass, $proxyClass);
-            
+
             return new $proxyClass($this, $originalAction);
         });
     }

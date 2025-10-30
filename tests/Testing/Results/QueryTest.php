@@ -24,7 +24,7 @@ it('can calculate duration', function () {
     $duration = $query->duration();
     
     expect($duration)->toBeInstanceOf(CarbonInterval::class);
-    expect($duration->totalMilliseconds)->toBe(1500);
+    expect($duration->totalMilliseconds)->toBe(1500.0);
 });
 
 it('has string representation', function () {
@@ -39,5 +39,5 @@ it('calculates duration with zero time', function () {
     
     $duration = $query->duration();
     
-    expect($duration->totalMilliseconds)->toBe(0);
+    expect($duration->totalMilliseconds)->toBe(0.0);
 });

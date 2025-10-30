@@ -10,6 +10,6 @@ class ClosureAction extends Action
 {
     public function handle(?\Closure $closure = null)
     {
-        return $closure ? $closure() : null;
+        return $closure ? $closure($this) : null;
     }
 }
