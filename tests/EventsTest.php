@@ -9,16 +9,6 @@ use Iak\Action\Tests\TestClasses\MiddleManAction;
 use Iak\Action\Tests\TestClasses\DeeplyNestedAction;
 use Illuminate\Support\Facades\Event;
 
-#[EmitsEvents(['test-event', 'another-event'])]
-class TestActionWithEvents
-{
-    use HandlesEvents;
-
-    public function handle()
-    {
-        return 'test';
-    }
-}
 
 // EmitsEvents Attribute Tests
 describe('EmitsEvents Attribute', function () {
@@ -48,50 +38,50 @@ describe('EmitsEvents Attribute', function () {
 // HandlesEvents Trait Tests
 describe('HandlesEvents Trait', function () {
     it('can listen for events', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
         $callback = function ($data) {
             return $data;
         };
 
-        $result = $action->on('test-event', $callback);
+        $result = $action->on('test.event.a', $callback);
 
         expect($result)->toBe($action);
     });
 
     it('can emit events', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
         $data = ['key' => 'value'];
         $eventReceived = false;
 
-        $action->on('test-event', function ($receivedData) use ($data, &$eventReceived) {
+        $action->on('test.event.a', function ($receivedData) use ($data, &$eventReceived) {
             expect($receivedData)->toBe($data);
             $eventReceived = true;
         });
 
-        $result = $action->event('test-event', $data);
+        $result = $action->event('test.event.a', $data);
 
         expect($result)->toBe($action);
         expect($eventReceived)->toBeTrue();
     });
 
     it('throws exception for invalid event when listening', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
 
         expect(fn () => $action->on('invalid-event', function () {}))
             ->toThrow(InvalidArgumentException::class, "Cannot listen for event 'invalid-event'.");
     });
 
     it('throws exception for invalid event when emitting', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
 
         expect(fn () => $action->event('invalid-event', []))
             ->toThrow(InvalidArgumentException::class, "Cannot emit event 'invalid-event'.");
     });
 
     it('can forward events', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
         
-        $result = $action->forwardEvents(['test-event']);
+        $result = $action->forwardEvents(['test.event.a']);
 
         expect($result)->toBe($action);
         
@@ -99,11 +89,11 @@ describe('HandlesEvents Trait', function () {
         $reflection = new ReflectionClass($action);
         $property = $reflection->getProperty('forwardEvents');
         $property->setAccessible(true);
-        expect($property->getValue($action))->toBe(['test-event']);
+        expect($property->getValue($action))->toBe(['test.event.a']);
     });
 
     it('forward events with null uses allowed events', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
         
         $result = $action->forwardEvents();
 
@@ -113,22 +103,22 @@ describe('HandlesEvents Trait', function () {
         $reflection = new ReflectionClass($action);
         $property = $reflection->getProperty('forwardEvents');
         $property->setAccessible(true);
-        expect($property->getValue($action))->toBe(['test-event', 'another-event']);
+        expect($property->getValue($action))->toBe(['test.event.a', 'test.event.b']);
     });
 
     it('get allowed events returns events from attribute', function () {
-        $action = new TestActionWithEvents();
+        $action = FireEventAction::make();
         
         $events = $action->getAllowedEvents();
 
-        expect($events)->toBe(['test-event', 'another-event']);
+        expect($events)->toBe(['test.event.a', 'test.event.b']);
     });
 
     it('cleanup on destruct', function () {
         Event::fake();
 
-        $action = new TestActionWithEvents();
-        $action->on('test-event', function () {});
+        $action = FireEventAction::make();
+        $action->on('test.event.a', function () {});
         
         // Trigger destructor
         unset($action);
