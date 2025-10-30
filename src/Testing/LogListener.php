@@ -4,9 +4,10 @@ namespace Iak\Action\Testing;
 
 use Carbon\Carbon;
 use Monolog\Logger;
-use Monolog\Handler\AbstractHandler;
 use Monolog\LogRecord;
 use Illuminate\Support\Facades\Log;
+use Monolog\Handler\AbstractHandler;
+use Iak\Action\Testing\Results\Entry;
 
 class LogListener
 {
@@ -65,7 +66,7 @@ class LogListener
 
     public function addLog(string $level, string $message, array $context, Carbon $timestamp, string $channel): void
     {
-        $this->logs[] = new LogEntry($level, $message, $context, $timestamp, $channel);
+        $this->logs[] = new Entry($level, $message, $context, $timestamp, $channel);
     }
 
     public function isEnabled(): bool

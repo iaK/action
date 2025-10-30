@@ -5,7 +5,7 @@ namespace Iak\Action\Testing;
 use Iak\Action\Action;
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
-use Iak\Action\Testing\Measurement;
+use Iak\Action\Testing\Results\Measurement;
 use Iak\Action\Testing\QueryListener;
 use Iak\Action\Testing\LogListener;
 use Iak\Action\Testing\RuntimeMeasurer;
@@ -230,12 +230,10 @@ class Testable
                 throw new \InvalidArgumentException("Invalid measure class: $actionToBeMeasured");
             }
                         
-            // Resolve the original action BEFORE binding to avoid infinite loop
-            $originalAction = $actionToBeMeasured::make();
-
-            app()->bind($actionToBeMeasured, fn () => 
-                 new ($this->createMeasureProxyClass($actionToBeMeasured))($this, $originalAction)
-            );
+            // Create the proxy class once
+            $proxyClass = $this->createMeasureProxyClass($actionToBeMeasured);
+            
+            $this->bindProxyClass($actionToBeMeasured, $proxyClass);
         }
     }
 
@@ -258,12 +256,10 @@ class Testable
                 throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
             }
                         
-            // Resolve the original action BEFORE binding to avoid infinite loop
-            $originalAction = $actionToRecordDbCalls::make();
-
-            app()->bind($actionToRecordDbCalls, fn () => 
-                 new ($this->createDatabaseProxyClass($actionToRecordDbCalls))($this, $originalAction)
-            );
+            // Create the proxy class once
+            $proxyClass = $this->createDatabaseProxyClass($actionToRecordDbCalls);
+            
+            $this->bindProxyClass($actionToRecordDbCalls, $proxyClass);
         }
     }
 
@@ -286,13 +282,27 @@ class Testable
                 throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecordLogs");
             }
                         
-            // Resolve the original action BEFORE binding to avoid infinite loop
-            $originalAction = $actionToRecordLogs::make();
-
-            app()->bind($actionToRecordLogs, fn () => 
-                 new ($this->createLogProxyClass($actionToRecordLogs))($this, $originalAction)
-            );
+            // Create the proxy class once
+            $proxyClass = $this->createLogProxyClass($actionToRecordLogs);
+            
+            $this->bindProxyClass($actionToRecordLogs, $proxyClass);
         }
+    }
+
+    private function bindProxyClass(string $actionClass, string $proxyClass): void
+    {
+        app()->bind($actionClass, function () use ($actionClass, $proxyClass) {
+            // Temporarily unbind to resolve the original action from the container
+            app()->offsetUnset($actionClass);
+            
+            // Resolve the original action from the container
+            $originalAction = $actionClass::make();
+            
+            // Rebind our proxy for future resolutions
+            $this->bindProxyClass($actionClass, $proxyClass);
+            
+            return new $proxyClass($this, $originalAction);
+        });
     }
 
     private function createMeasureProxyClass(string $measure): string
@@ -303,6 +313,11 @@ class Testable
 
         if (!class_exists($measure)) {
             throw new \InvalidArgumentException("Invalid measure class: $measure");
+        }
+
+        // Check if class already exists
+        if (class_exists($proxyClass)) {
+            return $proxyClass;
         }
 
         $code = <<<PHP
@@ -326,6 +341,11 @@ class Testable
             throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecord");
         }
 
+        // Check if class already exists
+        if (class_exists($proxyClass)) {
+            return $proxyClass;
+        }
+
         $code = <<<PHP
     final class $proxyClass extends $fqcn 
     {
@@ -345,6 +365,11 @@ class Testable
 
         if (!class_exists($actionToRecord)) {
             throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecord");
+        }
+
+        // Check if class already exists
+        if (class_exists($proxyClass)) {
+            return $proxyClass;
         }
 
         $code = <<<PHP

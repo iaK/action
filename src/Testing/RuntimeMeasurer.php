@@ -3,7 +3,7 @@
 namespace Iak\Action\Testing;
 
 use Iak\Action\Action;
-use Iak\Action\Testing\Measurement;
+use Iak\Action\Testing\Results\Measurement;
 
 class RuntimeMeasurer
 {

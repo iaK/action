@@ -1,10 +1,10 @@
 <?php
 
-namespace Iak\Action\Testing;
+namespace Iak\Action\Testing\Results;
 
 use Carbon\CarbonInterval;
 
-class DatabaseCall
+class Query
 {
     public function __construct(
         public string $query,

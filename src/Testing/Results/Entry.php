@@ -1,10 +1,10 @@
 <?php
 
-namespace Iak\Action\Testing;
+namespace Iak\Action\Testing\Results;
 
 use Carbon\Carbon;
 
-class LogEntry
+class Entry
 {
     public function __construct(
         public string $level,

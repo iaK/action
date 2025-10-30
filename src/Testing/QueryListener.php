@@ -3,6 +3,7 @@
 namespace Iak\Action\Testing;
 
 use Illuminate\Support\Facades\DB;
+use Iak\Action\Testing\Results\Query;
 use Illuminate\Database\Events\QueryExecuted;
 
 class QueryListener
@@ -19,7 +20,7 @@ class QueryListener
                 return;
             }
 
-            $this->queries[] = new DatabaseCall(
+            $this->queries[] = new Query(
                 $query->sql,
                 $query->bindings,
                 $query->time / 1000, // Convert milliseconds to seconds

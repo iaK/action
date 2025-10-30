@@ -1,18 +1,17 @@
 <?php
 
-use Illuminate\Support\Carbon;
-use Iak\Action\Testing\LogEntry;
+use Carbon\Carbon;
+use Iak\Action\Testing\Results\Entry;
 use Illuminate\Support\Facades\Log;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
 
 it('can record logs for the calling action', function () {
     $result = ClosureAction::test()
         ->logs(function (array $logs) {
             expect($logs)->toHaveCount(4);
             
-            expect($logs)->each->toBeInstanceOf(LogEntry::class);
+            expect($logs)->each->toBeInstanceOf(Entry::class);
             
             expect($logs[0]->level)->toBe('INFO');
             expect($logs[0]->message)->toBe('Action started');
@@ -47,11 +46,11 @@ it('can record logs for a single action', function () {
         ->logs(ClosureAction::class, function (array $logs) {
             expect($logs)->toHaveCount(2);
             
-            expect($logs[0])->toBeInstanceOf(LogEntry::class);
+            expect($logs[0])->toBeInstanceOf(Entry::class);
             expect($logs[0]->level)->toBe('INFO');
             expect($logs[0]->message)->toBe('Closure action started');
             
-            expect($logs[1])->toBeInstanceOf(LogEntry::class);
+            expect($logs[1])->toBeInstanceOf(Entry::class);
             expect($logs[1]->level)->toBe('INFO');
             expect($logs[1]->message)->toBe('Closure action completed');
         })

@@ -1,7 +1,7 @@
 <?php
 
 use Iak\Action\Testing\RuntimeMeasurer;
-use Iak\Action\Testing\Measurement;
+use Iak\Action\Testing\Results\Measurement;
 use Iak\Action\Tests\TestClasses\SayHelloAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\MultiArgAction;
