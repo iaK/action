@@ -409,10 +409,10 @@ class Testable
 
     private function measureMainAction($args)
     {
-        $start = microtime(true);
-        $result = $this->action->handle(...$args);
-        $end = microtime(true);
-        $this->measuredActions[] = new Measurement($this->action::class, $start, $end);
+        // Use RuntimeMeasurer so memory events on the main action are captured
+        $measurer = new RuntimeMeasurer($this->action, $this->action);
+        $result = $measurer->handle(...$args);
+        $this->measuredActions[] = $measurer;
 
         return $result;
     }

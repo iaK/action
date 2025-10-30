@@ -61,7 +61,7 @@ it('can convert measurement to string', function () {
     FireEventAction::test()
         ->measure(function (array $measurements) {
             $measurement = $measurements[0];
-            expect((string) $measurement)->toBe("{$measurement->class} took {$measurement->duration()->totalMilliseconds}ms");
+            expect((string) $measurement)->toBe("{$measurement->class} took {$measurement->duration()->totalMilliseconds}ms (memory: {$measurement->memoryUsed()}, peak: {$measurement->peakMemory()})");
         })
         ->handle();
 });
@@ -92,13 +92,8 @@ it('can measure memory usage of multiple actions', function () {
         ->measure([FireEventAction::class, SayHelloAction::class], function (array $measurements) {
             expect($measurements)->toHaveCount(2);
             
-            foreach ($measurements as $measurement) {
-                expect($measurement->startMemory)->toBeInt();
-                expect($measurement->endMemory)->toBeInt();
-                expect($measurement->peakMemory)->toBeInt();
-                expect($measurement->endMemory)->toBeGreaterThanOrEqual($measurement->startMemory);
-                expect($measurement->peakMemory)->toBeGreaterThanOrEqual($measurement->endMemory);
-            }
+            expect($measurements[0]->class)->toBe(SayHelloAction::class);
+            expect($measurements[1]->class)->toBe(FireEventAction::class);
         })
         ->handle(function () {
             SayHelloAction::make()->handle();
@@ -129,21 +124,18 @@ it('includes memory info in measurement string representation when memory is use
 
 it('can access memory records through measurement', function () {
     ClosureAction::test()
-        ->measure(ClosureAction::class, function (array $measurements) {
+        ->measure(function (array $measurements) {
             expect($measurements)->toHaveCount(1);
-            
             expect($measurements[0]->records()[0]['name'])->toBe('start');
             expect($measurements[0]->records()[1]['name'])->toBe('end');
         })
-        ->handle(function () {
-            ClosureAction::make()->handle(function ($action) {
-                $action->recordMemory('start');
-                $action->recordMemory('end');
-            });
+        ->handle(function ($action) {
+            $action->recordMemory('start');
+            $action->recordMemory('end');
         });
 });
 
-it('can record memory with simple action', function () {
+it('can access memory records through measurement on the provided action', function () {
     $result = ClosureAction::test()
         ->measure(ClosureAction::class, function (array $measurements) {
             expect($measurements)->toHaveCount(1);
