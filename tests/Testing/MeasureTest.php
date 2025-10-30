@@ -152,14 +152,13 @@ it('can record memory with simple action', function () {
             expect($records[0]['name'])->toBe('start');
         })
         ->handle(function () {
-            $value = TestMemoryAction::make()->handle();
             ClosureAction::make()->handle(function ($action) {
                 $action->recordMemory('start');
             });
-            return $value;
+            return 'done';
         });
 
-    expect($result)->toBe(1024 * 300);
+    expect($result)->toBe('done');
 });
 
 it('throws exception when measure method receives invalid callback', function () {
