@@ -249,10 +249,11 @@ class Testable
                 throw new \InvalidArgumentException("Invalid measure class: $actionToBeMeasured");
             }
                         
-            // Create the proxy class once
-            $proxyClass = $this->createMeasureProxyClass($actionToBeMeasured);
-            
-            $this->bindProxyClass($actionToBeMeasured, $proxyClass);
+            $this->bindProxyWrapper($actionToBeMeasured, function ($action) use ($actionToBeMeasured) {
+                // Use the original action class (the resolved action might already be a proxy)
+                $proxyClass = $this->createMeasureProxyClass($actionToBeMeasured);
+                return new $proxyClass($this, $action);
+            });
         }
     }
 
@@ -270,10 +271,11 @@ class Testable
                 throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
             }
                         
-            // Create the proxy class once
-            $proxyClass = $this->createDatabaseProxyClass($actionToRecordDbCalls);
-            
-            $this->bindProxyClass($actionToRecordDbCalls, $proxyClass);
+            $this->bindProxyWrapper($actionToRecordDbCalls, function ($action) use ($actionToRecordDbCalls) {
+                // Use the original action class (the resolved action might already be a proxy)
+                $proxyClass = $this->createDatabaseProxyClass($actionToRecordDbCalls);
+                return new $proxyClass($this, $action);
+            });
         }
     }
 
@@ -291,26 +293,40 @@ class Testable
                 throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecordLogs");
             }
                         
-            // Create the proxy class once
-            $proxyClass = $this->createLogProxyClass($actionToRecordLogs);
-            
-            $this->bindProxyClass($actionToRecordLogs, $proxyClass);
+            $this->bindProxyWrapper($actionToRecordLogs, function ($action) use ($actionToRecordLogs) {
+                // Use the original action class (the resolved action might already be a proxy)
+                $proxyClass = $this->createLogProxyClass($actionToRecordLogs);
+                return new $proxyClass($this, $action);
+            });
         }
     }
 
-    private function bindProxyClass(string $actionClass, string $proxyClass): void
+    private function bindProxyWrapper(string $actionClass, \Closure $wrapper): void
     {
-        app()->bind($actionClass, function () use ($actionClass, $proxyClass) {
-            // Temporarily unbind to resolve the original action from the container
-            app()->offsetUnset($actionClass);
+        // Capture the previous resolver if one exists (another feature may have already bound it)
+        $previousResolver = null;
+        if (app()->bound($actionClass)) {
+            $bindings = app()->getBindings();
+            if (isset($bindings[$actionClass]['concrete']) && is_callable($bindings[$actionClass]['concrete'])) {
+                $previousResolver = $bindings[$actionClass]['concrete'];
+            }
+        }
 
-            // Resolve the original action from the container
-            $originalAction = $actionClass::make();
+        app()->bind($actionClass, function () use ($actionClass, $wrapper, $previousResolver) {
+            // If there's a previous resolver (another feature), use it to resolve
+            // Otherwise, resolve the original action from the container
+            if ($previousResolver) {
+                $resolved = $previousResolver();
+            } else {
+                // Temporarily unbind to get the original action
+                app()->offsetUnset($actionClass);
+                $resolved = $actionClass::make();
+                // Rebind for future resolutions
+                $this->bindProxyWrapper($actionClass, $wrapper);
+            }
 
-            // Rebind our proxy for future resolutions
-            $this->bindProxyClass($actionClass, $proxyClass);
-
-            return new $proxyClass($this, $originalAction);
+            // Wrap whatever we resolved with our proxy
+            return $wrapper($resolved);
         });
     }
 
@@ -391,6 +407,7 @@ class Testable
 
         return $proxyClass;
     }
+
 
     private function handleOnly(): void
     {
