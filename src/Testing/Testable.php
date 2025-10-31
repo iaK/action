@@ -140,7 +140,6 @@ class Testable
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->logsCallback = $actions;
-            $this->actionsToRecordLogs = [$this->action::class];
             $this->recordMainActionLogs = true;
             return $this;
         }
@@ -169,26 +168,51 @@ class Testable
         $this->interceptDatabaseCalls();
         $this->interceptLogs();
 
+        // Build an executable pipeline so logs, queries, and measurement can be combined
+        $execute = function () use ($args) {
+            return $this->action->handle(...$args);
+        };
+
+        $measurer = null;
+
+        // Measurement layer
         if ($this->measureSelf) {
-            $result = $this->measureMainAction($args);
-        } elseif ($this->recordMainActionDbCalls) {
-            // Record database calls for the main action using the shorthand syntax
+            $measurer = new RuntimeMeasurer($this->action, $this->action);
+            $execute = function () use ($measurer, $args) {
+                return $measurer->handle(...$args);
+            };
+        }
+
+        // Database queries layer
+        if ($this->recordMainActionDbCalls) {
             if (!$this->queryListener) {
                 $this->queryListener = new QueryListener();
             }
-            $result = $this->queryListener->listen(function () use ($args) {
-                return $this->action->handle(...$args);
-            });
-        } elseif ($this->recordMainActionLogs) {
-            // Record logs for the main action using the shorthand syntax
+            $previous = $execute;
+            $execute = function () use ($previous) {
+                return $this->queryListener->listen(function () use ($previous) {
+                    return $previous();
+                });
+            };
+        }
+
+        // Logs layer
+        if ($this->recordMainActionLogs) {
             if (!$this->logListener) {
                 $this->logListener = new LogListener();
             }
-            $result = $this->logListener->listen(function () use ($args) {
-                return $this->action->handle(...$args);
-            });
-        } else {
-            $result = $this->action->handle(...$args);
+            $previous = $execute;
+            $execute = function () use ($previous) {
+                return $this->logListener->listen(function () use ($previous) {
+                    return $previous();
+                });
+            };
+        }
+
+        $result = $execute();
+
+        if ($measurer !== null) {
+            $this->measuredActions[] = $measurer;
         }
 
         if (isset($this->measurementsCallback)) {
@@ -263,11 +287,6 @@ class Testable
         $this->logListener = new LogListener();
 
         foreach ($this->actionsToRecordLogs as $actionToRecordLogs) {
-            // Skip the main action if using shorthand syntax
-            if ($actionToRecordLogs === $this->action::class && $this->recordMainActionLogs) {
-                continue;
-            }
-
             if (!class_exists($actionToRecordLogs)) {
                 throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecordLogs");
             }
