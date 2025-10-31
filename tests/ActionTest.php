@@ -1,23 +1,22 @@
 <?php
 
 use Mockery\MockInterface;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
-use Iak\Action\Tests\TestClasses\FireEventAction;
+use Iak\Action\Tests\TestClasses\ClosureAction;
 
 it('can be instantiated', function () {
-    $action = SayHelloAction::make();
+    $action = ClosureAction::make();
 
-    expect($action)->toBeInstanceOf(SayHelloAction::class);
+    expect($action)->toBeInstanceOf(ClosureAction::class);
 });
 
 it('can be faked', function () {
-    $action = SayHelloAction::fake();
+    $action = ClosureAction::fake();
 
     expect($action)->toBeInstanceOf(MockInterface::class);
 });
 
 it('can create fake action with custom alias', function () {
-    $fake = SayHelloAction::fake('custom.test.action');
+    $fake = ClosureAction::fake('custom.test.action');
     
     expect($fake)->toBeInstanceOf(MockInterface::class);
     expect(app('custom.test.action'))->toBe($fake);

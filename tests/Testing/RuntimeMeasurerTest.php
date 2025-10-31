@@ -2,22 +2,24 @@
 
 use Iak\Action\Testing\RuntimeMeasurer;
 use Iak\Action\Testing\Results\Measurement;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
+use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\MultiArgAction;
 
 it('can be instantiated with an action', function () {
-    $action = new SayHelloAction();
+    $action = new ClosureAction();
     $measurer = new RuntimeMeasurer($action);
 
     expect($measurer)->toBeInstanceOf(RuntimeMeasurer::class);
 });
 
 it('handles action execution and measures time', function () {
-    $action = new SayHelloAction();
+    $action = new ClosureAction();
     $measurer = new RuntimeMeasurer($action);
 
-    $result = $measurer->handle();
+    $result = $measurer->handle(function () {
+        return 'Hello, World!';
+    });
 
     expect($result)->toBe('Hello, World!');
     expect($measurer->start)->toBeString();
@@ -26,10 +28,12 @@ it('handles action execution and measures time', function () {
 });
 
 it('handles action execution and measures memory', function () {
-    $action = new SayHelloAction();
+    $action = new ClosureAction();
     $measurer = new RuntimeMeasurer($action);
 
-    $result = $measurer->handle();
+    $result = $measurer->handle(function () {
+        return 'Hello, World!';
+    });
 
     expect($result)->toBe('Hello, World!');
     expect($measurer->startMemory)->toBeInt();
@@ -53,38 +57,37 @@ it('handles action with arguments', function () {
 });
 
 it('handles action with multiple arguments', function () {
-    $action = new MultiArgAction();
+    $action = new LogAction();
     $measurer = new RuntimeMeasurer($action);
+    $result = $measurer->handle('Hello', ['test' => 'test'], 'info');
 
-    $result = $measurer->handle('Hello', 'World', 'Test');
-
-    expect($result)->toBe('Hello World Test');
+    expect($result)->toBe('Hello');
     expect($measurer->start)->toBeString();
     expect($measurer->end)->toBeString();
 });
 
 it('creates measurement result with correct class name', function () {
-    $action = new SayHelloAction();
+    $action = new ClosureAction();
     $measurer = new RuntimeMeasurer($action);
 
     $measurer->handle();
     $measurement = $measurer->result();
 
     expect($measurement)->toBeInstanceOf(Measurement::class);
-    expect($measurement->class)->toBe(SayHelloAction::class);
+    expect($measurement->class)->toBe(ClosureAction::class);
     expect($measurement->start)->toBe((float) $measurer->start);
     expect($measurement->end)->toBe((float) $measurer->end);
 });
 
 it('creates measurement result with memory tracking', function () {
-    $action = new SayHelloAction();
+    $action = new ClosureAction();
     $measurer = new RuntimeMeasurer($action);
 
     $measurer->handle();
     $measurement = $measurer->result();
 
     expect($measurement)->toBeInstanceOf(Measurement::class);
-    expect($measurement->class)->toBe(SayHelloAction::class);
+    expect($measurement->class)->toBe(ClosureAction::class);
     expect($measurement->start)->toBe((float) $measurer->start);
     expect($measurement->end)->toBe((float) $measurer->end);
     expect($measurement->startMemory)->toBe($measurer->startMemory);

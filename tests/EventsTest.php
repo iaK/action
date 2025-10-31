@@ -3,10 +3,6 @@
 use Iak\Action\HandlesEvents;
 use Iak\Action\EmitsEvents;
 use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\FireEventAction;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
-use Iak\Action\Tests\TestClasses\MiddleManAction;
-use Iak\Action\Tests\TestClasses\DeeplyNestedAction;
 use Illuminate\Support\Facades\Event;
 
 
@@ -38,7 +34,7 @@ describe('EmitsEvents Attribute', function () {
 // HandlesEvents Trait Tests
 describe('HandlesEvents Trait', function () {
     it('can listen for events', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         $callback = function ($data) {
             return $data;
         };
@@ -49,7 +45,7 @@ describe('HandlesEvents Trait', function () {
     });
 
     it('can emit events', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         $data = ['key' => 'value'];
         $eventReceived = false;
 
@@ -65,21 +61,21 @@ describe('HandlesEvents Trait', function () {
     });
 
     it('throws exception for invalid event when listening', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
 
         expect(fn () => $action->on('invalid-event', function () {}))
             ->toThrow(InvalidArgumentException::class, "Cannot listen for event 'invalid-event'.");
     });
 
     it('throws exception for invalid event when emitting', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
 
         expect(fn () => $action->event('invalid-event', []))
             ->toThrow(InvalidArgumentException::class, "Cannot emit event 'invalid-event'.");
     });
 
     it('can forward events', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         
         $result = $action->forwardEvents(['test.event.a']);
 
@@ -93,7 +89,7 @@ describe('HandlesEvents Trait', function () {
     });
 
     it('forward events with null uses allowed events', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         
         $result = $action->forwardEvents();
 
@@ -107,7 +103,7 @@ describe('HandlesEvents Trait', function () {
     });
 
     it('get allowed events returns events from attribute', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         
         $events = $action->getAllowedEvents();
 
@@ -117,7 +113,7 @@ describe('HandlesEvents Trait', function () {
     it('cleanup on destruct', function () {
         Event::fake();
 
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         $action->on('test.event.a', function () {});
         
         // Trigger destructor
@@ -132,7 +128,7 @@ describe('HandlesEvents Trait', function () {
 describe('Event Action Integration', function () {
     it('can emit events', function () {
         $eventsCalled = [];
-        FireEventAction::make()
+        ClosureAction::make()
             ->on('test.event.a', function ($data) use (&$eventsCalled) {
                 $eventsCalled[] = 'test.event.a';
                 expect($data)->toBe('Hello, World!');
@@ -141,28 +137,33 @@ describe('Event Action Integration', function () {
                 $eventsCalled[] = 'test.event.b';
                 expect($data)->toBe(['Hello', 'World']);
             })
-            ->handle();
+            ->handle(function ($action) {
+                $action->event('test.event.a', 'Hello, World!');
+                $action->event('test.event.b', ['Hello', 'World']);
+            });
 
         expect($eventsCalled)->toBe(['test.event.a', 'test.event.b']);
     });
 
     it('throws an exception if an event is not allowed', function () {
-        $action = new FireEventAction(true);
+        $action = ClosureAction::make();
 
-        expect(fn () => $action->handle())
+        expect(fn () => $action->handle(function ($action) {
+            $action->event('test.event.c', 'Hello, World!');
+        }))
             ->toThrow(InvalidArgumentException::class, "Cannot emit event 'test.event.c'. Did you mean: 'test.event.a'?");
     });
 
     it('throws an exception if listening to an event that is not allowed', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
 
         expect(fn () => $action->on('test.event.c', function () {}))
             ->toThrow(InvalidArgumentException::class, "Cannot listen for event 'test.event.c'. Did you mean: 'test.event.a'?");
     });
 
     it('isolates events for each action instance', function () {
-        $actionA = FireEventAction::make();
-        $actionB = FireEventAction::make();
+        $actionA = ClosureAction::make();
+        $actionB = ClosureAction::make();
 
         $eventsCalledForA = [];
         $eventsCalledForB = [];
@@ -174,8 +175,12 @@ describe('Event Action Integration', function () {
             $eventsCalledForB[] = 'test.event.a';
         });
 
-        $actionA->handle();
-        $actionB->handle();
+        $actionA->handle(function ($action) {
+            $action->event('test.event.a', 'Hello, World!');
+        });
+        $actionB->handle(function ($action) {
+            $action->event('test.event.a', 'Hello, World!');
+        });
 
         expect($eventsCalledForA)->toBe(['test.event.a']);
         expect($eventsCalledForB)->toBe(['test.event.a']);
@@ -191,9 +196,12 @@ describe('Event Action Integration', function () {
                 (new class {
                     public function handle()
                     {
-                        FireEventAction::make()
+                        ClosureAction::make()
                             ->forwardEvents(['test.event.a', 'test.event.b'])
-                            ->handle();
+                            ->handle(function ($action) {
+                                $action->event('test.event.a', 'Hello, World!');
+                                $action->event('test.event.b', ['Hello', 'World']);
+                            });
                     }
                 })->handle();
             });
@@ -211,9 +219,11 @@ describe('Event Action Integration', function () {
                 (new class {
                     public function handle()
                     {
-                        FireEventAction::make()
+                        ClosureAction::make()
                             ->forwardEvents()
-                            ->handle();
+                            ->handle(function ($action) {
+                                $action->event('test.event.a', 'Hello, World!');
+                            });
                     }
                 })->handle();
             });
@@ -230,8 +240,10 @@ describe('Event Action Integration', function () {
                 (new class {
                     public function handle()
                     {
-                        FireEventAction::make()
-                            ->handle();
+                        ClosureAction::make()
+                            ->handle(function ($action) {
+                                $action->event('test.event.a', 'Hello, World!');
+                            });
                     }
                 })->handle();
             });
@@ -240,7 +252,7 @@ describe('Event Action Integration', function () {
     });
 
     it('cleans up event listeners on destruction', function () {
-        $action = FireEventAction::make();
+        $action = ClosureAction::make();
         $action->on('test.event.a', function () {});
         
         // Verify event listener is registered by checking if it exists
@@ -260,8 +272,8 @@ describe('Event Action Integration', function () {
     it('handles edge case with circular event propagation', function () {
         $eventsReceived = [];
         
-        $action1 = FireEventAction::make();
-        $action2 = FireEventAction::make();
+        $action1 = ClosureAction::make();
+        $action2 = ClosureAction::make();
         
         $action1->on('test.event.a', function ($data) use (&$eventsReceived, $action2) {
             $eventsReceived[] = $data;
@@ -269,7 +281,9 @@ describe('Event Action Integration', function () {
             $action2->event('test.event.a', $data);
         });
         
-        $action1->handle();
+        $action1->handle(function ($action) {
+            $action->event('test.event.a', 'Hello, World!');
+        });
         
         // Should not cause infinite loop - the propagation should be limited
         expect($eventsReceived)->toHaveCount(1);

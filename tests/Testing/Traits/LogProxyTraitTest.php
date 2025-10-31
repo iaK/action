@@ -3,30 +3,30 @@
 use Iak\Action\Testing\Traits\LogProxyTrait;
 use Iak\Action\Testing\LogListener;
 use Iak\Action\Testing\Testable;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
+use Iak\Action\Tests\TestClasses\ClosureAction;
 
 describe('LogProxyTrait', function () {
     it('can create proxy with trait', function () {
         $testable = $this->createMock(Testable::class);
-        $action = new SayHelloAction();
+        $action = new ClosureAction();
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         
-        expect($proxy)->toBeInstanceOf(SayHelloAction::class);
+        expect($proxy)->toBeInstanceOf(ClosureAction::class);
     });
 
     it('handle calls original action', function () {
         $testable = $this->createMock(Testable::class);
         $testable->logListener = null;
         
-        $action = $this->createMock(SayHelloAction::class);
+        $action = $this->createMock(ClosureAction::class);
         $action->expects($this->once())
                ->method('handle')
                ->willReturn('test result');
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         
@@ -39,12 +39,12 @@ describe('LogProxyTrait', function () {
         $testable = $this->createMock(Testable::class);
         $testable->logListener = null;
         
-        $action = $this->createMock(SayHelloAction::class);
+        $action = $this->createMock(ClosureAction::class);
         $action->expects($this->once())
                ->method('handle')
                ->willReturn('test result');
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         
@@ -64,12 +64,12 @@ describe('LogProxyTrait', function () {
         $testable = $this->createMock(Testable::class);
         $testable->logListener = $existingListener;
         
-        $action = $this->createMock(SayHelloAction::class);
+        $action = $this->createMock(ClosureAction::class);
         $action->expects($this->once())
                ->method('handle')
                ->willReturn('test result');
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         
@@ -83,13 +83,15 @@ describe('LogProxyTrait', function () {
         $testable = $this->createMock(Testable::class);
         $testable->logListener = null;
         
-        $action = new SayHelloAction();
+        $action = new ClosureAction();
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         
-        $result = $proxy->handle();
+        $result = $proxy->handle(function () {
+            return 'Hello, World!';
+        });
         
         expect($result)->toBe('Hello, World!');
     });
@@ -98,9 +100,9 @@ describe('LogProxyTrait', function () {
         $testable = $this->createMock(Testable::class);
         $testable->logListener = null;
         
-        $action = new SayHelloAction();
+        $action = new ClosureAction();
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         
@@ -117,9 +119,9 @@ describe('LogProxyTrait', function () {
         $testable = $this->createMock(Testable::class);
         $testable->logListener = null;
         
-        $action = new SayHelloAction();
+        $action = new ClosureAction();
         
-        $proxy = new class($testable, $action) extends SayHelloAction {
+        $proxy = new class($testable, $action) extends ClosureAction {
             use LogProxyTrait;
         };
         

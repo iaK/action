@@ -3,9 +3,7 @@
 use Iak\Action\Testing\Testable;
 use Iak\Action\Testing\Results\Measurement;
 use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\FireEventAction;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
-use Iak\Action\Tests\TestClasses\TestMemoryAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 it('can measure the duration of an action', function () {
     $result = ClosureAction::test()
@@ -30,35 +28,35 @@ it('can measure the duration of an action with a specific action', function ($ac
         ->measure($actions, function (array $measurements) {
             expect($measurements)->toHaveCount(1);
             expect($measurements[0])->toBeInstanceOf(Measurement::class);
-            expect($measurements[0]->class)->toBe(FireEventAction::class);
+            expect($measurements[0]->class)->toBe(ClosureAction::class);
         })
         ->handle(function () {
-            FireEventAction::make()->handle();
+            ClosureAction::make()->handle();
 
             return 'done';
         });
 
     expect($result)->toBe('done');
 })->with([
-    'asString' => [FireEventAction::class], 
-    'asArray' => [[FireEventAction::class]]
+    'asString' => [ClosureAction::class], 
+    'asArray' => [[ClosureAction::class]]
 ]);
 
 it('can measure several actions', function () {
     ClosureAction::test()
-        ->measure([FireEventAction::class, SayHelloAction::class], function (array $measurements) {
+        ->measure([ClosureAction::class, OtherClosureAction::class], function (array $measurements) {
             expect($measurements)->toHaveCount(2);
-            expect($measurements[0]->class)->toBe(SayHelloAction::class); // Executed first
-            expect($measurements[1]->class)->toBe(FireEventAction::class);   // Executed second
+            expect($measurements[0]->class)->toBe(ClosureAction::class); // Executed first
+            expect($measurements[1]->class)->toBe(OtherClosureAction::class);   // Executed second
         })
         ->handle(function () {
-            SayHelloAction::make()->handle();
-            FireEventAction::make()->handle();
+            ClosureAction::make()->handle();
+            OtherClosureAction::make()->handle();
         });
 });
 
 it('can convert measurement to string', function () {
-    FireEventAction::test()
+    ClosureAction::test()
         ->measure(function (array $measurements) {
             $measurement = $measurements[0];
             expect((string) $measurement)->toBe("{$measurement->class} took {$measurement->duration()->totalMilliseconds}ms (memory: {$measurement->memoryUsed()}, peak: {$measurement->peakMemory()})");
@@ -89,15 +87,15 @@ it('can measure memory usage of an action', function () {
 
 it('can measure memory usage of multiple actions', function () {
     ClosureAction::test()
-        ->measure([FireEventAction::class, SayHelloAction::class], function (array $measurements) {
+        ->measure([ClosureAction::class, OtherClosureAction::class], function (array $measurements) {
             expect($measurements)->toHaveCount(2);
             
-            expect($measurements[0]->class)->toBe(SayHelloAction::class);
-            expect($measurements[1]->class)->toBe(FireEventAction::class);
+            expect($measurements[0]->class)->toBe(ClosureAction::class);
+            expect($measurements[1]->class)->toBe(OtherClosureAction::class);
         })
         ->handle(function () {
-            SayHelloAction::make()->handle();
-            FireEventAction::make()->handle();
+            ClosureAction::make()->handle();
+            OtherClosureAction::make()->handle();
         });
 });
 
@@ -154,7 +152,7 @@ it('can access memory records through measurement on the provided action', funct
 });
 
 it('throws exception when measure method receives invalid callback', function () {
-    expect(fn () => ClosureAction::test()->measure(FireEventAction::class))
+    expect(fn () => ClosureAction::test()->measure(ClosureAction::class))
         ->toThrow(InvalidArgumentException::class, 'A callback is required');
 });
 

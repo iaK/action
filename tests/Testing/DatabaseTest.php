@@ -1,41 +1,38 @@
 <?php
 
-use Iak\Action\Testing\Testable;
-use Iak\Action\Testing\Results\Query;
 use Illuminate\Support\Facades\DB;
 use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\DatabaseAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 it('can record database calls for the calling action', function () {
-    $result = DatabaseAction::test()
+    $result = ClosureAction::test()
         ->queries(function (array $dbCalls) {
-            expect($dbCalls)->toBeGreaterThanOrEqual(2);
+            expect($dbCalls)->toHaveCount(2);
             
-            // Find the SELECT queries (ignoring CREATE TABLE and INSERT)
-            $selectQueries = array_filter($dbCalls, fn($call) => str_contains($call->query, 'SELECT'));
-            $selectQueries = array_values($selectQueries);
-            
-            expect($selectQueries)->toHaveCount(2);
-            expect($selectQueries[0])->toBeInstanceOf(Query::class);
-            expect($selectQueries[0]->query)->toContain('SELECT * FROM users');
-            expect($selectQueries[0]->bindings)->toBe([1]);
-            expect($selectQueries[1]->query)->toContain('SELECT * FROM posts');
-            expect($selectQueries[1]->bindings)->toBe([1]);
+            expect($dbCalls[0]->query)->toBe('SELECT 1');
+            expect($dbCalls[1]->query)->toBe('SELECT 2');
         })
-        ->handle();
+        ->handle(function () {
+            DB::statement('SELECT 1');
+            DB::statement('SELECT 2');
+            return 'done';
+        });
 
-    expect($result)->toBe('Database queries executed');
+    expect($result)->toBe('done');
 });
 
 it('can record database calls for a single action', function () {
     $result = ClosureAction::test()
         ->queries(ClosureAction::class, function (array $dbCalls) {
             expect($dbCalls)->toHaveCount(1);
+            expect($dbCalls[0]->query)->toBe('SELECT 1');
         })
         ->handle(function () {
-            DatabaseAction::make()->handle();
+            OtherClosureAction::make()->handle(function () {
+                DB::statement('SELECT 2');
+            });
             ClosureAction::make()->handle(function () {
-                DB::statement('CREATE TEMPORARY TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY)');
+                DB::statement('SELECT 1');
             });
             return 'done';
         });
@@ -45,42 +42,35 @@ it('can record database calls for a single action', function () {
 
 it('can record database calls for a specific action', function ($actions) {
     $result = ClosureAction::test()
-        ->queries($actions, function (array $dbCalls) {
-            expect($dbCalls)->toBeGreaterThanOrEqual(2);
-            
-            // Find the SELECT queries
-            $selectQueries = array_filter($dbCalls, fn($call) => str_contains($call->query, 'SELECT'));
-            expect($selectQueries)->toHaveCount(2);
-            
-            $firstSelect = array_values($selectQueries)[0];
-            expect($firstSelect)->toBeInstanceOf(Query::class);
-            expect($firstSelect->query)->toContain('SELECT * FROM users');
+        ->queries($actions, function ($queries) {
+            expect($queries)->toHaveCount(1);
+            expect($queries[0]->query)->toBe('SELECT 1');
         })
         ->handle(function () {
-            DatabaseAction::make()->handle();
+            ClosureAction::make()->handle(function () {
+                DB::statement('SELECT 1');
+            });
             return 'done';
         });
 
     expect($result)->toBe('done');
 })->with([
-    'asString' => [DatabaseAction::class], 
-    'asArray' => [[DatabaseAction::class]]
+    'asString' => [ClosureAction::class], 
+    'asArray' => [[ClosureAction::class]]
 ]);
 
 it('can convert database call to string', function () {
-    DatabaseAction::test()
-        ->queries(function (array $dbCalls) {
-            $dbCall = $dbCalls[0];
-            $string = (string) $dbCall;
-            expect($string)->toContain('Query:');
-            expect($string)->toContain('Bindings:');
-            expect($string)->toContain('Time:');
+    ClosureAction::test()
+        ->queries(function ($queries) {
+            expect((string) $queries[0])->toMatch('/Query: SELECT 1 | Bindings: \[\] | Time: \d+\.\d+ms/');
         })
-        ->handle();
+        ->handle(function () {
+            DB::statement('SELECT 1');
+        });
 });
 
 it('throws exception when recordDbCalls method receives invalid callback', function () {
-    expect(fn () => ClosureAction::test()->queries(DatabaseAction::class))
+    expect(fn () => ClosureAction::test()->queries(ClosureAction::class))
         ->toThrow(InvalidArgumentException::class, 'A callback is required');
 });
 

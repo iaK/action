@@ -1,11 +1,7 @@
 <?php
 
 use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\DatabaseAction;
-use Iak\Action\Tests\TestClasses\FireEventAction;
 use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Tests\TestClasses\SayHelloAction;
-use Iak\Action\Tests\TestClasses\TestMemoryAction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
