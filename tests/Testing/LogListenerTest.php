@@ -4,20 +4,16 @@ use Iak\Action\Testing\LogListener;
 use Iak\Action\Testing\Results\Entry;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
-use Orchestra\Testbench\TestCase;
 
-class LogListenerTest extends TestCase
-{
-    public function test_can_create_log_listener()
-    {
+describe('LogListener', function () {
+    it('can create log listener', function () {
         $listener = new LogListener();
         
-        $this->assertInstanceOf(LogListener::class, $listener);
-        $this->assertFalse($listener->isEnabled());
-    }
+        expect($listener)->toBeInstanceOf(LogListener::class);
+        expect($listener->isEnabled())->toBeFalse();
+        });
 
-    public function test_can_listen_for_logs()
-    {
+    it('can listen for logs', function () {
         $listener = new LogListener();
         
         $result = $listener->listen(function () {
@@ -25,12 +21,11 @@ class LogListenerTest extends TestCase
             return 'test result';
         });
 
-        $this->assertEquals('test result', $result);
-        $this->assertFalse($listener->isEnabled());
-    }
+        expect($result)->toBe('test result');
+        expect($listener->isEnabled())->toBeFalse();
+        });
 
-    public function test_captures_logs_during_listening()
-    {
+    it('captures logs during listening', function () {
         $listener = new LogListener();
         
         $listener->listen(function () {
@@ -40,15 +35,14 @@ class LogListenerTest extends TestCase
 
         $logs = $listener->getLogs();
         
-        $this->assertCount(2, $logs);
-        $this->assertInstanceOf(Entry::class, $logs[0]);
-        $this->assertEquals('INFO', $logs[0]->level);
-        $this->assertEquals('Test message', $logs[0]->message);
-        $this->assertEquals(['key' => 'value'], $logs[0]->context);
-    }
+        expect($logs)->toHaveCount(2);
+        expect($logs[0])->toBeInstanceOf(Entry::class);
+        expect($logs[0]->level)->toBe('INFO');
+        expect($logs[0]->message)->toBe('Test message');
+        expect($logs[0]->context)->toBe(['key' => 'value']);
+        });
 
-    public function test_can_get_log_count()
-    {
+    it('can get log count', function () {
         $listener = new LogListener();
         
         $listener->listen(function () {
@@ -56,11 +50,10 @@ class LogListenerTest extends TestCase
             Log::info('Message 2');
         });
 
-        $this->assertEquals(2, $listener->getLogCount());
-    }
+        expect($listener->getLogCount())->toBe(2);
+        });
 
-    public function test_can_get_logs_by_level()
-    {
+    it('can get logs by level', function () {
         $listener = new LogListener();
         
         $listener->listen(function () {
@@ -72,31 +65,29 @@ class LogListenerTest extends TestCase
         $infoLogs = $listener->getLogsByLevel('INFO');
         $warningLogs = $listener->getLogsByLevel('WARNING');
         
-        $this->assertCount(2, $infoLogs);
-        $this->assertCount(1, $warningLogs);
-    }
+        expect($infoLogs)->toHaveCount(2);
+        expect($warningLogs)->toHaveCount(1);
+        });
 
-    public function test_can_clear_logs()
-    {
+    it('can clear logs', function () {
         $listener = new LogListener();
         
         $listener->listen(function () {
             Log::info('Test message');
         });
 
-        $this->assertEquals(1, $listener->getLogCount());
+        expect($listener->getLogCount())->toBe(1);
         
         $listener->clear();
         
-        $this->assertEquals(0, $listener->getLogCount());
-    }
+        expect($listener->getLogCount())->toBe(0);
+        });
 
-    public function test_can_get_handler()
-    {
+    it('can get handler', function () {
         $listener = new LogListener();
         
         $handler = $listener->getHandler();
         
-        $this->assertInstanceOf(\Monolog\Handler\AbstractHandler::class, $handler);
-    }
-}
+        expect($handler)->toBeInstanceOf(\Monolog\Handler\AbstractHandler::class);
+        });
+});

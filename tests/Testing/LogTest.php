@@ -6,8 +6,9 @@ use Illuminate\Support\Facades\Log;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 
-it('can record logs for the calling action', function () {
-    $result = ClosureAction::test()
+describe('Log Feature', function () {
+    it('can record logs for the calling action', function () {
+        $result = ClosureAction::test()
         ->logs(function (array $logs) {
             expect($logs)->toHaveCount(4);
             
@@ -38,11 +39,11 @@ it('can record logs for the calling action', function () {
             return 'Hello from LogAction';
         });
 
-    expect($result)->toBe('Hello from LogAction');
-});
+        expect($result)->toBe('Hello from LogAction');
+        });
 
-it('can record logs for a single action', function () {
-    $result = ClosureAction::test()
+    it('can record logs for a single action', function () {
+        $result = ClosureAction::test()
         ->logs(ClosureAction::class, function (array $logs) {
             expect($logs)->toHaveCount(2);
             
@@ -63,12 +64,11 @@ it('can record logs for a single action', function () {
             });
         });
 
-    expect($result)->toBe('done');
-});
+        expect($result)->toBe('done');
+    });
 
-
-it('can convert log entry to string', function () {
-    ClosureAction::test()
+    it('can convert log entry to string', function () {
+        ClosureAction::test()
         ->logs(function (array $logs) {
             $logEntry = $logs[0];
             $string = (string) $logEntry;
@@ -78,11 +78,10 @@ it('can convert log entry to string', function () {
         ->handle(function () {
             Log::info('Action started', ['context' => 'test']);
         });
-});
+    });
 
-
-it('can record logs with different channels', function () {
-    $result = ClosureAction::test()
+    it('can record logs with different channels', function () {
+        $result = ClosureAction::test()
         ->logs(function (array $logs) {
             expect($logs)->toHaveCount(2);
             
@@ -97,11 +96,11 @@ it('can record logs with different channels', function () {
             return 'done';
         });
 
-    expect($result)->toBe('done');
-});
+        expect($result)->toBe('done');
+    });
 
-it('can record logs with timestamps', function () {    
-    ClosureAction::test()
+    it('can record logs with timestamps', function () {
+        ClosureAction::test()
         ->logs(function (array $logs) {
             expect($logs[0]->timestamp)->toBeInstanceOf(Carbon::class);
         })
@@ -109,20 +108,20 @@ it('can record logs with timestamps', function () {
             Log::info('Action started');
             return 'done';
         });
-});
+    });
 
-it('throws exception when logs method receives invalid callback', function () {
-    expect(fn () => ClosureAction::test()->logs(LogAction::class))
-        ->toThrow(InvalidArgumentException::class, 'A callback is required');
-});
+    it('throws exception when logs method receives invalid callback', function () {
+        expect(fn () => ClosureAction::test()->logs(LogAction::class))
+            ->toThrow(InvalidArgumentException::class, 'A callback is required');
+    });
 
-it('throws exception when logs method receives invalid class', function () {
-    expect(fn () => ClosureAction::test()->logs('NonExistentClass', function () {}))
-        ->toThrow(Exception::class);
-});
+    it('throws exception when logs method receives invalid class', function () {
+        expect(fn () => ClosureAction::test()->logs('NonExistentClass', function () {}))
+            ->toThrow(Exception::class);
+    });
 
-it('can record logs for multiple actions', function () {
-    ClosureAction::test()
+    it('can record logs for multiple actions', function () {
+        ClosureAction::test()
         ->logs([LogAction::class, ClosureAction::class], function (array $logs) {
             expect($logs)->toHaveCount(2);
             expect($logs[0]->level)->toBe('INFO');
@@ -138,5 +137,5 @@ it('can record logs for multiple actions', function () {
                 Log::info('Second log', ['context' => 'test']);
             });
         });
+    });
 });
-

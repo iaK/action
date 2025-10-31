@@ -15,7 +15,7 @@ describe('LogProxyTrait', function () {
         };
         
         expect($proxy)->toBeInstanceOf(ClosureAction::class);
-    });
+        });
 
     it('handle calls original action', function () {
         $testable = $this->createMock(Testable::class);
@@ -33,7 +33,7 @@ describe('LogProxyTrait', function () {
         $result = $proxy->handle();
         
         expect($result)->toBe('test result');
-    });
+        });
 
     it('creates log listener if not exists', function () {
         $testable = $this->createMock(Testable::class);
@@ -51,7 +51,7 @@ describe('LogProxyTrait', function () {
         $proxy->handle();
         
         expect($testable->logListener)->toBeInstanceOf(LogListener::class);
-    });
+        });
 
     it('uses existing log listener', function () {
         $existingListener = $this->createMock(LogListener::class);
@@ -77,7 +77,7 @@ describe('LogProxyTrait', function () {
         
         expect($result)->toBe('test result');
         expect($testable->logListener)->toBe($existingListener);
-    });
+        });
 
     it('properly delegates to wrapped action', function () {
         $testable = $this->createMock(Testable::class);
@@ -94,7 +94,7 @@ describe('LogProxyTrait', function () {
         });
         
         expect($result)->toBe('Hello, World!');
-    });
+        });
 
     it('handles log listener creation correctly', function () {
         $testable = $this->createMock(Testable::class);
@@ -113,7 +113,7 @@ describe('LogProxyTrait', function () {
         
         // After calling handle, logListener should be created
         expect($testable->logListener)->toBeInstanceOf(LogListener::class);
-    });
+        });
 
     it('maintains log listener reference across multiple calls', function () {
         $testable = $this->createMock(Testable::class);
@@ -133,5 +133,5 @@ describe('LogProxyTrait', function () {
         
         // Should be the same instance
         expect($firstListener)->toBe($secondListener);
-    });
+        });
 });

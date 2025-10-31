@@ -5,8 +5,9 @@ use Iak\Action\Testing\Results\Measurement;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
-it('can measure the duration of an action', function () {
-    $result = ClosureAction::test()
+describe('Measurement Feature', function () {
+    it('can measure the duration of an action', function () {
+        $result = ClosureAction::test()
         ->measure(function (array $measurements) {
             expect($measurements)->toHaveCount(1);
             expect($measurements[0]->class)->toBe(ClosureAction::class);
@@ -20,11 +21,11 @@ it('can measure the duration of an action', function () {
             return 'done';
         });
 
-    expect($result)->toBe('done');
-});
+        expect($result)->toBe('done');
+    });
 
-it('can measure the duration of an action with a specific action', function ($actions) {
-    $result = ClosureAction::test()
+    it('can measure the duration of an action with a specific action', function ($actions) {
+        $result = ClosureAction::test()
         ->measure($actions, function (array $measurements) {
             expect($measurements)->toHaveCount(1);
             expect($measurements[0])->toBeInstanceOf(Measurement::class);
@@ -36,14 +37,14 @@ it('can measure the duration of an action with a specific action', function ($ac
             return 'done';
         });
 
-    expect($result)->toBe('done');
-})->with([
-    'asString' => [ClosureAction::class], 
-    'asArray' => [[ClosureAction::class]]
-]);
+        expect($result)->toBe('done');
+        })->with([
+        'asString' => [ClosureAction::class], 
+        'asArray' => [[ClosureAction::class]]
+    ]);
 
-it('can measure several actions', function () {
-    ClosureAction::test()
+    it('can measure several actions', function () {
+        ClosureAction::test()
         ->measure([ClosureAction::class, OtherClosureAction::class], function (array $measurements) {
             expect($measurements)->toHaveCount(2);
             expect($measurements[0]->class)->toBe(ClosureAction::class); // Executed first
@@ -53,19 +54,19 @@ it('can measure several actions', function () {
             ClosureAction::make()->handle();
             OtherClosureAction::make()->handle();
         });
-});
+    });
 
-it('can convert measurement to string', function () {
-    ClosureAction::test()
+    it('can convert measurement to string', function () {
+        ClosureAction::test()
         ->measure(function (array $measurements) {
             $measurement = $measurements[0];
             expect((string) $measurement)->toBe("{$measurement->class} took {$measurement->duration()->totalMilliseconds}ms (memory: {$measurement->memoryUsed()}, peak: {$measurement->peakMemory()})");
         })
         ->handle();
-});
+    });
 
-it('can measure memory usage of an action', function () {
-    $result = ClosureAction::test()
+    it('can measure memory usage of an action', function () {
+        $result = ClosureAction::test()
         ->measure(function (array $measurements) {
             expect($measurements)->toHaveCount(1);
             $measurement = $measurements[0];
@@ -82,11 +83,11 @@ it('can measure memory usage of an action', function () {
             return strlen($data);
         });
 
-    expect($result)->toBe(1024 * 512);
-});
+        expect($result)->toBe(1024 * 512);
+    });
 
-it('can measure memory usage of multiple actions', function () {
-    ClosureAction::test()
+    it('can measure memory usage of multiple actions', function () {
+        ClosureAction::test()
         ->measure([ClosureAction::class, OtherClosureAction::class], function (array $measurements) {
             expect($measurements)->toHaveCount(2);
             
@@ -97,10 +98,10 @@ it('can measure memory usage of multiple actions', function () {
             ClosureAction::make()->handle();
             OtherClosureAction::make()->handle();
         });
-});
+    });
 
-it('includes memory info in measurement string representation when memory is used', function () {
-    ClosureAction::test()
+    it('includes memory info in measurement string representation when memory is used', function () {
+        ClosureAction::test()
         ->measure(function (array $measurements) {
             $measurement = $measurements[0];
             $string = (string) $measurement;
@@ -118,10 +119,10 @@ it('includes memory info in measurement string representation when memory is use
             $data = str_repeat('x', 1024 * 100); // 100KB string
             return strlen($data);
         });
-});
+    });
 
-it('can access memory records through measurement', function () {
-    ClosureAction::test()
+    it('can access memory records through measurement', function () {
+        ClosureAction::test()
         ->measure(function (array $measurements) {
             expect($measurements)->toHaveCount(1);
             expect($measurements[0]->records()[0]['name'])->toBe('start');
@@ -131,10 +132,10 @@ it('can access memory records through measurement', function () {
             $action->recordMemory('start');
             $action->recordMemory('end');
         });
-});
+        });
 
-it('can access memory records through measurement on the provided action', function () {
-    $result = ClosureAction::test()
+    it('can access memory records through measurement on the provided action', function () {
+        $result = ClosureAction::test()
         ->measure(ClosureAction::class, function (array $measurements) {
             expect($measurements)->toHaveCount(1);
             $measurement = $measurements[0];
@@ -148,15 +149,16 @@ it('can access memory records through measurement on the provided action', funct
             return 'done';
         });
 
-    expect($result)->toBe('done');
-});
+        expect($result)->toBe('done');
+        });
 
-it('throws exception when measure method receives invalid callback', function () {
-    expect(fn () => ClosureAction::test()->measure(ClosureAction::class))
-        ->toThrow(InvalidArgumentException::class, 'A callback is required');
-});
+    it('throws exception when measure method receives invalid callback', function () {
+        expect(fn () => ClosureAction::test()->measure(ClosureAction::class))
+            ->toThrow(InvalidArgumentException::class, 'A callback is required');
+    });
 
-it('throws exception when measure method receives invalid class', function () {
-    expect(fn () => ClosureAction::test()->measure('NonExistentClass', function () {}))
-        ->toThrow(Exception::class);
+    it('throws exception when measure method receives invalid class', function () {
+        expect(fn () => ClosureAction::test()->measure('NonExistentClass', function () {}))
+            ->toThrow(Exception::class);
+    });
 });

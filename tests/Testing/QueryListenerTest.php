@@ -9,7 +9,7 @@ describe('QueryListener', function () {
     beforeEach(function () {
         // Clear any existing listeners
         DB::getEventDispatcher()->flush('Illuminate\Database\Events\QueryExecuted');
-    });
+        });
 
     it('can create query listener', function () {
         $listener = new QueryListener();
@@ -21,7 +21,7 @@ describe('QueryListener', function () {
         $property = $reflection->getProperty('enabled');
         $property->setAccessible(true);
         expect($property->getValue($listener))->toBeFalse();
-    });
+        });
 
     it('can listen for queries', function () {
         $listener = new QueryListener();
@@ -38,7 +38,7 @@ describe('QueryListener', function () {
         $property = $reflection->getProperty('enabled');
         $property->setAccessible(true);
         expect($property->getValue($listener))->toBeFalse();
-    });
+        });
 
     it('captures queries during listening', function () {
         $listener = new QueryListener();
@@ -54,7 +54,7 @@ describe('QueryListener', function () {
         expect($queries[0])->toBeInstanceOf(Query::class);
         expect($queries[0]->query)->toContain('SELECT 1 as test');
         expect($queries[0]->bindings)->toBe([]);
-    });
+        });
 
     it('can get call count', function () {
         $listener = new QueryListener();
@@ -66,7 +66,7 @@ describe('QueryListener', function () {
         });
 
         expect($listener->getCallCount())->toBe(3);
-    });
+        });
 
     it('can get total time', function () {
         $listener = new QueryListener();
@@ -80,7 +80,7 @@ describe('QueryListener', function () {
         
         expect($totalTime)->toBeFloat();
         expect($totalTime)->toBeGreaterThanOrEqual(0);
-    });
+        });
 
     it('can clear queries', function () {
         $listener = new QueryListener();
@@ -94,7 +94,7 @@ describe('QueryListener', function () {
         $listener->clear();
         
         expect($listener->getCallCount())->toBe(0);
-    });
+        });
 
     it('maintains query state across multiple listen calls', function () {
         $listener = new QueryListener();
@@ -112,7 +112,7 @@ describe('QueryListener', function () {
         });
         
         expect($listener->getCallCount())->toBe(2);
-    });
+        });
 
     it('can get queries with proper query details', function () {
         $listener = new QueryListener();
@@ -128,7 +128,7 @@ describe('QueryListener', function () {
         expect($queries[0]->bindings)->toBe([123]);
         expect($queries[0]->connection)->toBe('testing'); // In test environment, default connection is 'testing'
         expect($queries[0]->time)->toBeFloat();
-    });
+        });
 
     it('handles enabled state correctly', function () {
         $listener = new QueryListener();
@@ -147,7 +147,7 @@ describe('QueryListener', function () {
         
         // After listen call - should be disabled again
         expect($property->getValue($listener))->toBeFalse();
-    });
+        });
 
     it('captures queries with different connection names', function () {
         $listener = new QueryListener();
@@ -160,5 +160,5 @@ describe('QueryListener', function () {
         
         expect($queries)->toHaveCount(1);
         expect($queries[0]->connection)->toBe('testing');
-    });
+        });
 });
