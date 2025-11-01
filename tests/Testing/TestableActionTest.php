@@ -101,13 +101,13 @@ describe('Testable', function () {
 
     describe('feature combinations', function () {
         describe('on parent action', function () {
-            it('can combine measure and queries on parent action', function () {
+            it('can combine profile and queries on parent action', function () {
                 $result = ClosureAction::test()
-                    ->measure(function ($measurements) {
-                        expect($measurements)->toHaveCount(1);
-                        expect($measurements[0]->class)->toBe(ClosureAction::class);
-                        expect($measurements[0]->memoryRecords)->toHaveCount(1);
-                        expect($measurements[0]->memoryRecords[0]['name'])->toBe('start');
+                    ->profile(function ($profiles) {
+                        expect($profiles)->toHaveCount(1);
+                        expect($profiles[0]->class)->toBe(ClosureAction::class);
+                        expect($profiles[0]->memoryRecords)->toHaveCount(1);
+                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
                     })
                     ->queries(function ($queries) {
                         expect($queries)->toHaveCount(1);
@@ -119,13 +119,13 @@ describe('Testable', function () {
                     });
             });
 
-            it('can combine measure and logs on parent action', function () {
+            it('can combine profile and logs on parent action', function () {
                 ClosureAction::test()
-                    ->measure(function ($measurements) {
-                        expect($measurements)->toHaveCount(1);
-                        expect($measurements[0]->class)->toBe(ClosureAction::class);
-                        expect($measurements[0]->memoryRecords)->toHaveCount(1);
-                        expect($measurements[0]->memoryRecords[0]['name'])->toBe('start');
+                    ->profile(function ($profiles) {
+                        expect($profiles)->toHaveCount(1);
+                        expect($profiles[0]->class)->toBe(ClosureAction::class);
+                        expect($profiles[0]->memoryRecords)->toHaveCount(1);
+                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
                     })
                     ->logs(function ($logs) {
                         expect($logs)->toHaveCount(1);
@@ -155,11 +155,11 @@ describe('Testable', function () {
 
             it('can combine all three methods on parent action', function () {
                 ClosureAction::test()
-                    ->measure(function ($measurements) {
-                        expect($measurements)->toHaveCount(1);
-                        expect($measurements[0]->class)->toBe(ClosureAction::class);
-                        expect($measurements[0]->memoryRecords)->toHaveCount(1);
-                        expect($measurements[0]->memoryRecords[0]['name'])->toBe('start');
+                    ->profile(function ($profiles) {
+                        expect($profiles)->toHaveCount(1);
+                        expect($profiles[0]->class)->toBe(ClosureAction::class);
+                        expect($profiles[0]->memoryRecords)->toHaveCount(1);
+                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
                     })
                     ->queries(function ($queries) {
                         expect($queries)->toHaveCount(1);
@@ -178,13 +178,13 @@ describe('Testable', function () {
         });
 
         describe('on nested actions', function () {
-            it('can combine measure and queries on nested actions', function () {
+            it('can combine profile and queries on nested actions', function () {
                 ClosureAction::test()
-                    ->measure([ClosureAction::class], function ($measurements) {
-                        expect($measurements)->toHaveCount(1);
-                        expect($measurements[0]->class)->toBe(ClosureAction::class);
-                        expect($measurements[0]->memoryRecords)->toHaveCount(1);
-                        expect($measurements[0]->memoryRecords[0]['name'])->toBe('start');
+                    ->profile([ClosureAction::class], function ($profiles) {
+                        expect($profiles)->toHaveCount(1);
+                        expect($profiles[0]->class)->toBe(ClosureAction::class);
+                        expect($profiles[0]->memoryRecords)->toHaveCount(1);
+                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
                     })
                     ->queries([ClosureAction::class], function ($queries) {
                         expect($queries)->toHaveCount(1);
@@ -198,11 +198,11 @@ describe('Testable', function () {
                     });
             });
 
-            it('can combine measure and logs on nested actions', function () {
+            it('can combine profile and logs on nested actions', function () {
                 ClosureAction::test()
-                    ->measure([LogAction::class], function ($measurements) use (&$capturedMeasurements) {
-                        expect($measurements)->toHaveCount(1);
-                        expect($measurements[0]->class)->toBe(LogAction::class);
+                    ->profile([LogAction::class], function ($profiles) use (&$capturedProfiles) {
+                        expect($profiles)->toHaveCount(1);
+                        expect($profiles[0]->class)->toBe(LogAction::class);
                     })
                     ->logs([LogAction::class], function ($logs) use (&$capturedLogs) {
                         expect($logs)->toHaveCount(1);
@@ -234,15 +234,15 @@ describe('Testable', function () {
             });
 
             it('can combine all three methods on nested actions', function () {
-                $capturedMeasurements = [];
+                $capturedProfiles = [];
                 $capturedQueries = [];
                 $capturedLogs = [];
                 
                 ClosureAction::test()
-                    ->measure([ClosureAction::class, LogAction::class], function ($measurements) use (&$capturedMeasurements) {
-                        expect($measurements)->toHaveCount(2);
-                        expect($measurements[0]->class)->toBe(ClosureAction::class);
-                        expect($measurements[1]->class)->toBe(LogAction::class);
+                    ->profile([ClosureAction::class, LogAction::class], function ($profiles) use (&$capturedProfiles) {
+                        expect($profiles)->toHaveCount(2);
+                        expect($profiles[0]->class)->toBe(ClosureAction::class);
+                        expect($profiles[1]->class)->toBe(LogAction::class);
                     })
                     ->queries([ClosureAction::class], function ($queries) use (&$capturedQueries) {
                         expect($queries)->toHaveCount(1);

@@ -5,10 +5,10 @@ namespace Iak\Action\Testing;
 use Iak\Action\Action;
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
-use Iak\Action\Testing\Results\Measurement;
+use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\QueryListener;
 use Iak\Action\Testing\LogListener;
-use Iak\Action\Testing\RuntimeMeasurer;
+use Iak\Action\Testing\RuntimeProfiler;
 
 class Testable
 {
@@ -19,10 +19,10 @@ class Testable
     public array $only = [];
     public array $without = [];
 
-    public array $actionsToBeMeasured = [];
-    public array $measuredActions = [];
-    public bool $measureSelf = false;
-    public \Closure $measurementsCallback;
+    public array $actionsToBeProfiled = [];
+    public array $profiledActions = [];
+    public bool $profileSelf = false;
+    public \Closure $profilesCallback;
 
     public array $actionsToRecordDbCalls = [];
     public ?QueryListener $queryListener = null;
@@ -77,11 +77,11 @@ class Testable
      * @param  \Closure|string|array  $actions
      * @param  ?\Closure|null  $callback
      */
-    public function measure($actions, ?\Closure $callback = null) 
+    public function profile($actions, ?\Closure $callback = null) 
     {
         if (is_null($callback) && is_callable($actions)) {
-            $this->measurementsCallback = $actions;
-            $this->measureSelf = true;
+            $this->profilesCallback = $actions;
+            $this->profileSelf = true;
             return $this;
         }
 
@@ -89,15 +89,15 @@ class Testable
             throw new \InvalidArgumentException('A callback is required');
         }
 
-        $this->actionsToBeMeasured = is_array($actions) ? $actions : [$actions];
+        $this->actionsToBeProfiled = is_array($actions) ? $actions : [$actions];
 
-        foreach($this->actionsToBeMeasured as $measure) {
-            if (!class_exists($measure) && !app()->bound($measure)) {
-                throw new \InvalidArgumentException("The class or alias {$measure} is not bound to the container");
+        foreach($this->actionsToBeProfiled as $profile) {
+            if (!class_exists($profile) && !app()->bound($profile)) {
+                throw new \InvalidArgumentException("The class or alias {$profile} is not bound to the container");
             }
         }
         
-        $this->measurementsCallback = $callback;
+        $this->profilesCallback = $callback;
 
         return $this;
     }
@@ -164,22 +164,22 @@ class Testable
     public function handle(...$args)
     {
         $this->handleOnly();
-        $this->interceptMeasurements();
+        $this->interceptProfiles();
         $this->interceptDatabaseCalls();
         $this->interceptLogs();
 
-        // Build an executable pipeline so logs, queries, and measurement can be combined
+        // Build an executable pipeline so logs, queries, and profile can be combined
         $execute = function () use ($args) {
             return $this->action->handle(...$args);
         };
 
-        $measurer = null;
+        $profiler = null;
 
-        // Measurement layer
-        if ($this->measureSelf) {
-            $measurer = new RuntimeMeasurer($this->action, $this->action);
-            $execute = function () use ($measurer, $args) {
-                return $measurer->handle(...$args);
+        // Profile layer
+        if ($this->profileSelf) {
+            $profiler = new RuntimeProfiler($this->action, $this->action);
+            $execute = function () use ($profiler, $args) {
+                return $profiler->handle(...$args);
             };
         }
 
@@ -211,22 +211,22 @@ class Testable
 
         $result = $execute();
 
-        if ($measurer !== null) {
-            $this->measuredActions[] = $measurer;
+        if ($profiler !== null) {
+            $this->profiledActions[] = $profiler;
         }
 
-        if (isset($this->measurementsCallback)) {
-            $measurementsCallback = $this->measurementsCallback;
+        if (isset($this->profilesCallback)) {
+            $profilesCallback = $this->profilesCallback;
 
-            $measurements = array_map(function ($measurer) {
-                return match(get_class($measurer)) {
-                    RuntimeMeasurer::class => $measurer->result(),
-                    Measurement::class => $measurer,
-                    default => throw new \InvalidArgumentException("Invalid measurer class: " . get_class($measurer))
+            $profiles = array_map(function ($profiler) {
+                return match(get_class($profiler)) {
+                    RuntimeProfiler::class => $profiler->result(),
+                    Profile::class => $profiler,
+                    default => throw new \InvalidArgumentException("Invalid profiler class: " . get_class($profiler))
                 };
-            }, $this->measuredActions);
+            }, $this->profiledActions);
             
-            $measurementsCallback($measurements);
+            $profilesCallback($profiles);
         }
 
         if (isset($this->dbCallsCallback)) {
@@ -242,16 +242,16 @@ class Testable
         return $result;
     }
 
-    private function interceptMeasurements(): void
+    private function interceptProfiles(): void
     {
-        foreach ($this->actionsToBeMeasured as $actionToBeMeasured) {
-            if (!class_exists($actionToBeMeasured)) {
-                throw new \InvalidArgumentException("Invalid measure class: $actionToBeMeasured");
+        foreach ($this->actionsToBeProfiled as $actionToBeProfiled) {
+            if (!class_exists($actionToBeProfiled)) {
+                throw new \InvalidArgumentException("Invalid profile class: $actionToBeProfiled");
             }
                         
-            $this->bindProxyWrapper($actionToBeMeasured, function ($action) use ($actionToBeMeasured) {
+            $this->bindProxyWrapper($actionToBeProfiled, function ($action) use ($actionToBeProfiled) {
                 // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createMeasureProxyClass($actionToBeMeasured);
+                $proxyClass = $this->createProfileProxyClass($actionToBeProfiled);
                 return new $proxyClass($this, $action);
             });
         }
@@ -330,14 +330,14 @@ class Testable
         });
     }
 
-    private function createMeasureProxyClass(string $measure): string
+    private function createProfileProxyClass(string $profile): string
     {
-        // Create a dynamic proxy class that extends the action and uses ActionMeasurer
-        $proxyClass = 'MeasurementProxy_' . md5($measure . spl_object_id($this));
-        $fqcn = '\\' . ltrim($measure, '\\');
+        // Create a dynamic proxy class that extends the action and uses RuntimeProfiler
+        $proxyClass = 'ProfileProxy_' . md5($profile . spl_object_id($this));
+        $fqcn = '\\' . ltrim($profile, '\\');
 
-        if (!class_exists($measure)) {
-            throw new \InvalidArgumentException("Invalid measure class: $measure");
+        if (!class_exists($profile)) {
+            throw new \InvalidArgumentException("Invalid profile class: $profile");
         }
 
         // Check if class already exists
@@ -348,7 +348,7 @@ class Testable
         $code = <<<PHP
     final class $proxyClass extends $fqcn 
     {
-    use \\Iak\\Action\\Testing\\Traits\\MeasurementProxyTrait;
+    use \\Iak\\Action\\Testing\\Traits\\ProfileProxyTrait;
     }
     PHP;
         eval($code);
@@ -443,12 +443,12 @@ class Testable
         });
     }
 
-    private function measureMainAction($args)
+    private function profileMainAction($args)
     {
-        // Use RuntimeMeasurer so memory events on the main action are captured
-        $measurer = new RuntimeMeasurer($this->action, $this->action);
-        $result = $measurer->handle(...$args);
-        $this->measuredActions[] = $measurer;
+        // Use RuntimeProfiler so memory events on the main action are captured
+        $profiler = new RuntimeProfiler($this->action, $this->action);
+        $result = $profiler->handle(...$args);
+        $this->profiledActions[] = $profiler;
 
         return $result;
     }

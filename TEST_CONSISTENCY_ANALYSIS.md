@@ -10,15 +10,15 @@
 - ✅ `tests/EventsTest.php` - Uses multiple `describe()` blocks (EmitsEvents, HandlesEvents, Event Action Integration)
 
 **Files NOT using `describe()`:**
-- ❌ `tests/Testing/Traits/MeasurementProxyTraitTest.php`
+- ❌ `tests/Testing/Traits/ProfileProxyTraitTest.php`
 - ❌ `tests/Testing/Traits/DatabaseCallProxyTraitTest.php`
 - ❌ `tests/Testing/TestableActionTest.php`
 - ❌ `tests/Testing/Results/QueryTest.php`
-- ❌ `tests/Testing/Results/MeasurementTest.php`
+- ❌ `tests/Testing/Results/ProfileTest.php`
 - ❌ `tests/Testing/Results/EntryTest.php`
-- ❌ `tests/Testing/RuntimeMeasurerTest.php`
+- ❌ `tests/Testing/RuntimeProfilerTest.php`
 - ❌ `tests/ActionTest.php`
-- ❌ `tests/Testing/MeasureTest.php`
+- ❌ `tests/Testing/ProfileFeatureTest.php`
 - ❌ `tests/Testing/LogTest.php`
 - ❌ `tests/Testing/DatabaseTest.php`
 - ❌ `tests/Testing/CombinationTest.php`
@@ -143,24 +143,24 @@ describe('ComponentName', function () {
    - ✅ Should mirror `QueryListenerTest.php` structure
 
 2. **All trait test files should have `describe()`:**
-   - `MeasurementProxyTraitTest.php`
+   - `ProfileProxyTraitTest.php`
    - `DatabaseCallProxyTraitTest.php`
    - (LogProxyTraitTest.php already has it ✅)
 
 3. **All Results test files should have `describe()`:**
    - `QueryTest.php` → `describe('Query', ...)`
-   - `MeasurementTest.php` → `describe('Measurement', ...)`
+   - `ProfileTest.php` → `describe('Profile', ...)`
    - `EntryTest.php` → `describe('Entry', ...)`
 
 4. **Other test files should have `describe()`:**
-   - `RuntimeMeasurerTest.php` → `describe('RuntimeMeasurer', ...)`
+   - `RuntimeProfilerTest.php` → `describe('RuntimeProfiler', ...)`
    - `TestableActionTest.php` → `describe('Testable', ...)`
    - `ActionTest.php` → `describe('Action', ...)`
 
 ### Medium Priority (Consistency Improvements)
 
 5. **Feature test files (can stay flat or group):**
-   - `MeasureTest.php` → Could use `describe('Measurement Feature', ...)`
+   - `ProfileFeatureTest.php` → Could use `describe('Profile Feature', ...)`
    - `LogTest.php` → Could use `describe('Log Feature', ...)`
    - `DatabaseTest.php` → Could use `describe('Database Feature', ...)`
    - `CombinationTest.php` → **Should be merged into `TestableActionTest.php`** (both test `Testable` class)
@@ -186,11 +186,11 @@ describe('ComponentName', function () {
 
 ## Example: Before & After
 
-### Before (MeasurementProxyTraitTest.php):
+### Before (ProfileProxyTraitTest.php):
 ```php
 <?php
 
-use Iak\Action\Traits\MeasurementProxyTrait;
+use Iak\Action\Traits\ProfileProxyTrait;
 
 it('can be used in a proxy class', function () {
     // ...
@@ -205,10 +205,10 @@ it('can handle action execution through the proxy', function () {
 ```php
 <?php
 
-use Iak\Action\Traits\MeasurementProxyTrait;
+use Iak\Action\Traits\ProfileProxyTrait;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 
-describe('MeasurementProxyTrait', function () {
+describe('ProfileProxyTrait', function () {
     it('can be used in a proxy class', function () {
         // ...
     });
@@ -225,7 +225,7 @@ describe('MeasurementProxyTrait', function () {
 
 **Analysis:** `CombinationTest.php` and `TestableActionTest.php` both test the `Testable` class:
 - `TestableActionTest.php` tests mocking features (`without()`, `only()`)
-- `CombinationTest.php` tests method chaining (`measure()`, `queries()`, `logs()` together)
+- `CombinationTest.php` tests method chaining (`profile()`, `queries()`, `logs()` together)
 
 **Recommendation:** Merge `CombinationTest.php` into `TestableActionTest.php` and organize with `describe()` blocks:
 
@@ -236,7 +236,7 @@ describe('Testable', function () {
     });
     
     describe('feature combinations', function () {
-        // measure + queries, measure + logs, etc.
+        // profile + queries, profile + logs, etc.
     });
 });
 ```

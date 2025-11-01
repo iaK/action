@@ -20,7 +20,7 @@ abstract class Action
      */
     public function recordMemory(string $name): void
     {
-        // Dispatch an instance-scoped Laravel event so any measurer
+        // Dispatch an instance-scoped Laravel event so any profiler
         // attached to this specific instance can record the memory point.
         $eventName = 'action.record_memory.' . spl_object_hash($this);
         Event::dispatch($eventName, [$name]);
