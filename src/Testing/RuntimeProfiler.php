@@ -8,12 +8,12 @@ use Illuminate\Support\Facades\Event;
 
 class RuntimeProfiler
 {
-    public string $start;
-    public string $end;
-    public int $startMemory;
-    public int $endMemory;
-    public int $peakMemory;
-    public array $memoryRecords = [];
+    protected string $start;
+    protected string $end;
+    protected int $startMemory;
+    protected int $endMemory;
+    protected int $peakMemory;
+    protected array $memoryRecords = [];
 
     public function __construct(private Action $action, ?Action $eventSource = null)
     {
@@ -57,6 +57,10 @@ class RuntimeProfiler
 
     public function result(): Profile
     {
+        if (!isset($this->end)) {
+            throw new \Exception('Action has not been executed yet');
+        }
+
         return new Profile(
             $this->action::class, 
             $this->start, 

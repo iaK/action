@@ -39,6 +39,10 @@ describe('DatabaseCallProxyTrait', function () {
 
         $originalAction = new ClosureAction();
         $testable = new Testable($originalAction);
+        $testable->queries(function ($queries) {
+            expect($queries)->toHaveCount(1);
+            expect($queries[0]->query)->toBe('SELECT 1');
+        });
 
         $proxy = new $proxyClass($testable, $originalAction);
         $result = $proxy->handle(function () {
@@ -47,6 +51,5 @@ describe('DatabaseCallProxyTrait', function () {
         });
 
         expect($result)->toBe('Database queries executed');
-        expect($testable->recordedDbCalls)->toHaveCount(1);
         });
 });

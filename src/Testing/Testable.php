@@ -16,29 +16,28 @@ class Testable
         public Action $action
     ) {}
 
-    public array $only = [];
-    public array $without = [];
+    protected array $only = [];
 
-    public array $actionsToBeProfiled = [];
-    public array $profiledActions = [];
-    public bool $profileSelf = false;
-    public \Closure $profilesCallback;
+    protected array $actionsToBeProfiled = [];
+    protected array $profiledActions = [];
+    protected bool $profileSelf = false;
+    protected \Closure $profilesCallback;
 
-    public array $actionsToRecordDbCalls = [];
-    public array $recordedDbCalls = [];
-    public \Closure $dbCallsCallback;
-    public bool $recordMainActionDbCalls = false;
+    protected array $actionsToRecordDbCalls = [];
+    protected array $recordedDbCalls = [];
+    protected \Closure $dbCallsCallback;
+    protected bool $recordMainActionDbCalls = false;
     
-    public array $actionsToRecordLogs = [];
-    public array $recordedLogs = [];
-    public \Closure $logsCallback;
-    public bool $recordMainActionLogs = false;
+    protected array $actionsToRecordLogs = [];
+    protected array $recordedLogs = [];
+    protected \Closure $logsCallback;
+    protected bool $recordMainActionLogs = false;
     
     public function without(string|object|array $classes): static
     {
         $classes = is_array($classes) ? $classes : [$classes];
 
-        collect($classes)->map(function ($class, $key) {
+        collect($classes)->each(function ($class, $key) {
             [$class, $returnValue] = $this->getClassAndReturnValue($class, $key);
 
             if (!class_exists($class) && !app()->bound($class)) {
@@ -58,7 +57,7 @@ class Testable
                 return $class;
             }
 
-            throw new \InvalidArgumentException('Invalid class passed to within');
+            throw new \InvalidArgumentException('Invalid class passed to without');
         });
 
         return $this;
@@ -252,7 +251,7 @@ class Testable
         $this->profiledActions[] = $profile;
     }
 
-    private function interceptProfiles(): void
+    protected function interceptProfiles(): void
     {
         foreach ($this->actionsToBeProfiled as $actionToBeProfiled) {
             if (!class_exists($actionToBeProfiled)) {
@@ -267,7 +266,7 @@ class Testable
         }
     }
 
-    private function interceptDatabaseCalls(): void
+    protected function interceptDatabaseCalls(): void
     {
         if (empty($this->actionsToRecordDbCalls)) {
             return;
@@ -286,7 +285,7 @@ class Testable
         }
     }
 
-    private function interceptLogs(): void
+    protected function interceptLogs(): void
     {
         if (empty($this->actionsToRecordLogs)) {
             return;
@@ -305,7 +304,7 @@ class Testable
         }
     }
 
-    private function bindProxyWrapper(string $actionClass, \Closure $wrapper): void
+    protected function bindProxyWrapper(string $actionClass, \Closure $wrapper): void
     {
         // Capture the previous resolver if one exists (another feature may have already bound it)
         $previousResolver = null;
@@ -334,7 +333,7 @@ class Testable
         });
     }
 
-    private function createProfileProxyClass(string $profile): string
+    protected function createProfileProxyClass(string $profile): string
     {
         // Create a dynamic proxy class that extends the action and uses RuntimeProfiler
         $proxyClass = 'ProfileProxy_' . md5($profile . spl_object_id($this));
@@ -360,7 +359,7 @@ class Testable
         return $proxyClass;
     }
 
-    private function createDatabaseProxyClass(string $actionToRecord): string
+    protected function createDatabaseProxyClass(string $actionToRecord): string
     {
         // Create a dynamic proxy class that extends the action and records database calls
         $proxyClass = 'DatabaseProxy_' . md5($actionToRecord . spl_object_id($this));
@@ -386,7 +385,7 @@ class Testable
         return $proxyClass;
     }
 
-    private function createLogProxyClass(string $actionToRecord): string
+    protected function createLogProxyClass(string $actionToRecord): string
     {
         // Create a dynamic proxy class that extends the action and records logs
         $proxyClass = 'LogProxy_' . md5($actionToRecord . spl_object_id($this));
@@ -413,7 +412,7 @@ class Testable
     }
 
 
-    private function handleOnly(): void
+    protected function handleOnly(): void
     {
         if (empty($this->only)) {
             return;
@@ -447,17 +446,7 @@ class Testable
         });
     }
 
-    private function profileMainAction($args)
-    {
-        // Use RuntimeProfiler so memory events on the main action are captured
-        $profiler = new RuntimeProfiler($this->action, $this->action);
-        $result = $profiler->handle(...$args);
-        $this->addProfile($profiler->result());
-
-        return $result;
-    }
-
-    private function getClassAndReturnValue($class, $key): array
+    protected function getClassAndReturnValue($class, $key): array
     {
         if (is_string($key)) {
             return [$key, $class];
