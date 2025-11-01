@@ -7,7 +7,7 @@ use Carbon\CarbonInterval;
 class Profile
 {
     public function __construct(
-        public $class,
+        public string $class,
         public float $start,
         public float $end,
         public int $startMemory = 0,
