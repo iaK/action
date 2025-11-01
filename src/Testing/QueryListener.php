@@ -11,9 +11,12 @@ class QueryListener
     protected bool $enabled = false;
     protected array $queries = [];
     protected $listener;
+    protected ?string $action;
 
-    public function __construct()
+    public function __construct(?string $action = null)
     {
+        $this->action = $action;
+
         // Register the listener once for this instance
         $this->listener = function (QueryExecuted $query) {
             if (! $this->enabled) {
@@ -24,7 +27,8 @@ class QueryListener
                 $query->sql,
                 $query->bindings,
                 $query->time / 1000, // Convert milliseconds to seconds
-                $query->connectionName ?? 'default'
+                $query->connectionName ?? 'default',
+                $this->action
             );
         };
 

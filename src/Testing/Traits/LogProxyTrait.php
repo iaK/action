@@ -18,12 +18,15 @@ trait LogProxyTrait
 
     public function handle(...$args)
     {
-        if (!$this->testable->logListener) {
-            $this->testable->logListener = new LogListener();
-        }
-
-        return $this->testable->logListener->listen(function () use ($args) {
+        // Create a new listener for this specific action
+        $listener = new LogListener(get_class($this->action));
+        
+        $result = $listener->listen(function () use ($args) {
             return $this->action->handle(...$args);
         });
+        
+        $this->testable->addLogs($listener->getLogs());
+
+        return $result;
     }
 }

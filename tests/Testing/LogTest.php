@@ -5,6 +5,7 @@ use Iak\Action\Testing\Results\Entry;
 use Illuminate\Support\Facades\Log;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 describe('Log Feature', function () {
     it('can record logs for the calling action', function () {
@@ -73,7 +74,8 @@ describe('Log Feature', function () {
             $logEntry = $logs[0];
             $string = (string) $logEntry;
 
-            expect($string)->toMatch('/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] testing\.INFO: Action started {"context":"test"}$/');
+            expect($string)->toMatch('/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] testing\.INFO: Action started {"context":"test"} \| Action: .+$/');
+            expect($logEntry->action)->toBe(ClosureAction::class);
         })
         ->handle(function () {
             Log::info('Action started', ['context' => 'test']);
@@ -137,5 +139,36 @@ describe('Log Feature', function () {
                 Log::info('Second log', ['context' => 'test']);
             });
         });
+    });
+
+    it('tracks which action invoked the log', function () {
+        ClosureAction::test()
+            ->logs(function ($logs) {
+                expect($logs)->toHaveCount(1);
+                expect($logs[0]->action)->toBe(ClosureAction::class);
+            })
+            ->handle(function () {
+                OtherClosureAction::make()->handle(function () {
+                    Log::info('Test log message');
+                });
+            });
+    });
+
+    it('tracks nested actions when one action calls another', function () {
+        $result = ClosureAction::test()
+        ->logs(OtherClosureAction::class, function ($logs) {
+            expect($logs)->toHaveCount(1);
+            expect($logs[0]->action)->toBe(OtherClosureAction::class);
+        })
+        ->handle(function () {
+            OtherClosureAction::make()->handle(function () {
+                ClosureAction::make()->handle(function () {
+                    Log::info('Nested log message');
+                });
+            });
+            return 'done';
+        });
+
+        expect($result)->toBe('done');
     });
 });

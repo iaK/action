@@ -18,12 +18,15 @@ trait DatabaseCallProxyTrait
 
     public function handle(...$args)
     {
-        if (!$this->testable->queryListener) {
-            $this->testable->queryListener = new QueryListener();
-        }
-
-        return $this->testable->queryListener->listen(function () use ($args) {
+        // Create a new listener for this specific action
+        $listener = new QueryListener(get_class($this->action));
+        
+        $result = $listener->listen(function () use ($args) {
             return $this->action->handle(...$args);
         });
+        
+        $this->testable->addQueries($listener->getQueries());
+
+        return $result;
     }
 }

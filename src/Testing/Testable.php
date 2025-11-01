@@ -25,12 +25,12 @@ class Testable
     public \Closure $profilesCallback;
 
     public array $actionsToRecordDbCalls = [];
-    public ?QueryListener $queryListener = null;
+    public array $recordedDbCalls = [];
     public \Closure $dbCallsCallback;
     public bool $recordMainActionDbCalls = false;
     
     public array $actionsToRecordLogs = [];
-    public ?LogListener $logListener = null;
+    public array $recordedLogs = [];
     public \Closure $logsCallback;
     public bool $recordMainActionLogs = false;
     
@@ -173,73 +173,83 @@ class Testable
             return $this->action->handle(...$args);
         };
 
-        $profiler = null;
-
         // Profile layer
         if ($this->profileSelf) {
-            $profiler = new RuntimeProfiler($this->action, $this->action);
-            $execute = function () use ($profiler, $args) {
-                return $profiler->handle(...$args);
+            $execute = function () use ($args) {
+                $profiler = new RuntimeProfiler($this->action, $this->action);
+                $result = $profiler->handle(...$args);
+                $this->addProfile($profiler->result());
+                return $result;
             };
         }
 
         // Database queries layer
         if ($this->recordMainActionDbCalls) {
-            if (!$this->queryListener) {
-                $this->queryListener = new QueryListener();
-            }
             $previous = $execute;
             $execute = function () use ($previous) {
-                return $this->queryListener->listen(function () use ($previous) {
+                $listener = new QueryListener($this->action::class);
+                $result = $listener->listen(function () use ($previous) {
                     return $previous();
                 });
+                $this->addQueries($listener->getQueries());
+                return $result;
             };
         }
 
         // Logs layer
         if ($this->recordMainActionLogs) {
-            if (!$this->logListener) {
-                $this->logListener = new LogListener();
-            }
             $previous = $execute;
             $execute = function () use ($previous) {
-                return $this->logListener->listen(function () use ($previous) {
+                $listener = new LogListener($this->action::class);
+                $result = $listener->listen(function () use ($previous) {
                     return $previous();
                 });
+                $this->addLogs($listener->getLogs());
+                return $result;
             };
         }
 
         $result = $execute();
 
-        if ($profiler !== null) {
-            $this->profiledActions[] = $profiler;
-        }
-
         if (isset($this->profilesCallback)) {
             $profilesCallback = $this->profilesCallback;
-
-            $profiles = array_map(function ($profiler) {
-                return match(get_class($profiler)) {
-                    RuntimeProfiler::class => $profiler->result(),
-                    Profile::class => $profiler,
-                    default => throw new \InvalidArgumentException("Invalid profiler class: " . get_class($profiler))
-                };
-            }, $this->profiledActions);
-            
-            $profilesCallback($profiles);
+            $profilesCallback($this->profiledActions);
         }
 
         if (isset($this->dbCallsCallback)) {
             $dbCallsCallback = $this->dbCallsCallback;
-            $dbCallsCallback($this->queryListener?->getQueries() ?? []);
+            $dbCallsCallback($this->recordedDbCalls);
         }
 
         if (isset($this->logsCallback)) {
             $logsCallback = $this->logsCallback;
-            $logsCallback($this->logListener?->getLogs() ?? []);
+            $logsCallback($this->recordedLogs);
         }
 
         return $result;
+    }
+
+    public function addQueries(array $queries): void
+    {
+        if (empty($queries)) {
+            return;
+        }
+
+        $this->recordedDbCalls = array_merge($this->recordedDbCalls, $queries);
+    }
+
+    public function addLogs(array $logs): void
+    {
+        if (empty($logs)) {
+            return;
+        }
+
+        $this->recordedLogs = array_merge($this->recordedLogs, $logs);
+    }
+
+    public function addProfile(Profile $profile): void
+    {
+        $this->profiledActions[] = $profile;
     }
 
     private function interceptProfiles(): void
@@ -263,9 +273,6 @@ class Testable
             return;
         }
 
-        // Set up database query logging
-        $this->queryListener = new QueryListener();
-
         foreach ($this->actionsToRecordDbCalls as $actionToRecordDbCalls) {
             if (!class_exists($actionToRecordDbCalls)) {
                 throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
@@ -284,9 +291,6 @@ class Testable
         if (empty($this->actionsToRecordLogs)) {
             return;
         }
-
-        // Set up log capturing
-        $this->logListener = new LogListener();
 
         foreach ($this->actionsToRecordLogs as $actionToRecordLogs) {
             if (!class_exists($actionToRecordLogs)) {
@@ -448,7 +452,7 @@ class Testable
         // Use RuntimeProfiler so memory events on the main action are captured
         $profiler = new RuntimeProfiler($this->action, $this->action);
         $result = $profiler->handle(...$args);
-        $this->profiledActions[] = $profiler;
+        $this->addProfile($profiler->result());
 
         return $result;
     }

@@ -15,9 +15,11 @@ class LogListener
     protected array $logs = [];
     protected $handler;
     protected $originalHandlers = [];
+    protected ?string $action;
 
-    public function __construct()
+    public function __construct(?string $action = null)
     {
+        $this->action = $action;
         // Create a custom handler that captures logs
         $this->handler = new class extends AbstractHandler {
             private $listener;
@@ -66,7 +68,7 @@ class LogListener
 
     public function addLog(string $level, string $message, array $context, Carbon $timestamp, string $channel): void
     {
-        $this->logs[] = new Entry($level, $message, $context, $timestamp, $channel);
+        $this->logs[] = new Entry($level, $message, $context, $timestamp, $channel, $this->action);
     }
 
     public function isEnabled(): bool

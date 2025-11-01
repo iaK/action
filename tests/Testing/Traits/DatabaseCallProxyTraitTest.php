@@ -1,5 +1,6 @@
 <?php
 
+use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\DB;
 use Iak\Action\Testing\QueryListener;
 use Iak\Action\Tests\TestClasses\ClosureAction;
@@ -37,8 +38,7 @@ describe('DatabaseCallProxyTrait', function () {
         eval($code);
 
         $originalAction = new ClosureAction();
-        $testable = new \stdClass();
-        $testable->queryListener = new QueryListener();
+        $testable = new Testable($originalAction);
 
         $proxy = new $proxyClass($testable, $originalAction);
         $result = $proxy->handle(function () {
@@ -47,6 +47,6 @@ describe('DatabaseCallProxyTrait', function () {
         });
 
         expect($result)->toBe('Database queries executed');
-        expect($testable->queryListener->getQueries())->toHaveCount(1); // 3 CREATE/INSERT + 2 SELECT queries
+        expect($testable->recordedDbCalls)->toHaveCount(1);
         });
 });

@@ -10,7 +10,8 @@ class Query
         public string $query,
         public array $bindings,
         public float $time,
-        public string $connection = 'default'
+        public string $connection = 'default',
+        public ?string $action = null
     ) {}
 
     public function duration(): CarbonInterval
@@ -20,6 +21,7 @@ class Query
 
     public function __toString(): string
     {
-        return "Query: {$this->query} | Bindings: " . json_encode($this->bindings) . " | Time: {$this->duration()->totalMilliseconds}ms";
+        $actionInfo = $this->action ? " | Action: {$this->action}" : '';
+        return "Query: {$this->query} | Bindings: " . json_encode($this->bindings) . " | Time: {$this->duration()->totalMilliseconds}ms{$actionInfo}";
     }
 }
