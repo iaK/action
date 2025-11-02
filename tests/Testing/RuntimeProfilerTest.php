@@ -1,78 +1,78 @@
 <?php
 
-use Iak\Action\Testing\RuntimeProfiler;
+use Iak\Action\Testing\ProfileListener;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\MultiArgAction;
 
-describe('RuntimeProfiler', function () {
+describe('ProfileListener', function () {
     it('can be instantiated with an action', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
-        expect($profiler)->toBeInstanceOf(RuntimeProfiler::class);
+        expect($profiler)->toBeInstanceOf(ProfileListener::class);
     });
 
     it('handles action execution and profiles time', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $result = $profiler->handle(function () {
             return 'Hello, World!';
         });
 
         expect($result)->toBe('Hello, World!');
-        expect($profiler->result()->start)->toBeFloat();
-        expect($profiler->result()->end)->toBeFloat();
-        expect((float) $profiler->result()->end)->toBeGreaterThanOrEqual((float) $profiler->result()->start);
+        expect($profiler->getProfile()->start)->toBeFloat();
+        expect($profiler->getProfile()->end)->toBeFloat();
+        expect((float) $profiler->getProfile()->end)->toBeGreaterThanOrEqual((float) $profiler->getProfile()->start);
     });
 
     it('handles action execution and profiles memory', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $result = $profiler->handle(function () {
             return 'Hello, World!';
         });
 
         expect($result)->toBe('Hello, World!');
-        expect($profiler->result()->startMemory)->toBeInt();
-        expect($profiler->result()->endMemory)->toBeInt();
-        expect($profiler->result()->peakMemory)->toBeInt();
-        expect($profiler->result()->endMemory)->toBeGreaterThanOrEqual($profiler->result()->startMemory);
-        expect($profiler->result()->peakMemory)->toBeGreaterThanOrEqual($profiler->result()->endMemory);
+        expect($profiler->getProfile()->startMemory)->toBeInt();
+        expect($profiler->getProfile()->endMemory)->toBeInt();
+        expect($profiler->getProfile()->peakMemory)->toBeInt();
+        expect($profiler->getProfile()->endMemory)->toBeGreaterThanOrEqual($profiler->getProfile()->startMemory);
+        expect($profiler->getProfile()->peakMemory)->toBeGreaterThanOrEqual($profiler->getProfile()->endMemory);
     });
 
     it('handles action with arguments', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $result = $profiler->handle(function () {
             return 'Custom result';
         });
 
         expect($result)->toBe('Custom result');
-        expect($profiler->result()->start)->toBeFloat();
-        expect($profiler->result()->end)->toBeFloat();
+        expect($profiler->getProfile()->start)->toBeFloat();
+        expect($profiler->getProfile()->end)->toBeFloat();
     });
 
     it('handles action with multiple arguments', function () {
         $action = new LogAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
         $result = $profiler->handle('Hello', ['test' => 'test'], 'info');
 
         expect($result)->toBe('Hello');
-        expect($profiler->result()->start)->toBeFloat();
-        expect($profiler->result()->end)->toBeFloat();
+        expect($profiler->getProfile()->start)->toBeFloat();
+        expect($profiler->getProfile()->end)->toBeFloat();
     });
 
     it('creates profile result with correct class name', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $profiler->handle();
-        $profile = $profiler->result();
+        $profile = $profiler->getProfile();
 
         expect($profile)->toBeInstanceOf(Profile::class);
         expect($profile->class)->toBe(ClosureAction::class);
@@ -80,10 +80,10 @@ describe('RuntimeProfiler', function () {
 
     it('creates profile result with memory tracking', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $profiler->handle();
-        $profile = $profiler->result();
+        $profile = $profiler->getProfile();
 
         expect($profile)->toBeInstanceOf(Profile::class);
         expect($profile->class)->toBe(ClosureAction::class);
@@ -91,14 +91,14 @@ describe('RuntimeProfiler', function () {
 
     it('profiles execution time accurately', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         // Create a closure that sleeps for a specific duration
         $profiler->handle(function () {
             usleep(10000); // Sleep for 10ms
         });
 
-        $profile = $profiler->result();
+        $profile = $profiler->getProfile();
         $durationMs = $profile->duration()->totalMilliseconds;
 
         expect($durationMs)->toBeGreaterThan(5); // Should be at least 5ms
@@ -107,7 +107,7 @@ describe('RuntimeProfiler', function () {
 
     it('handles action that throws exception', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         expect(function () use ($profiler) {
             $profiler->handle(function () {
@@ -115,12 +115,12 @@ describe('RuntimeProfiler', function () {
             });
         })->toThrow(Exception::class, 'Test exception');
 
-        expect(fn () => $profiler->result())->toThrow(Exception::class, 'Action has not been executed yet');
+        expect(fn () => $profiler->getProfile())->toThrow(Exception::class, 'Action has not been executed yet');
     });
 
     it('profiles memory usage for memory-intensive action', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $result = $profiler->handle(function () {
             // Allocate some memory
@@ -129,15 +129,15 @@ describe('RuntimeProfiler', function () {
         });
 
         expect($result)->toBe(1024 * 1024);
-        expect($profiler->result()->startMemory)->toBeInt();
-        expect($profiler->result()->endMemory)->toBeInt();
-        expect($profiler->result()->peakMemory)->toBeInt();
+        expect($profiler->getProfile()->startMemory)->toBeInt();
+        expect($profiler->getProfile()->endMemory)->toBeInt();
+        expect($profiler->getProfile()->peakMemory)->toBeInt();
         
         // Memory usage should be tracked (end memory may not always be greater due to GC)
-        expect($profiler->result()->endMemory)->toBeGreaterThanOrEqual($profiler->result()->startMemory);
-        expect($profiler->result()->peakMemory)->toBeGreaterThanOrEqual($profiler->result()->endMemory);
+        expect($profiler->getProfile()->endMemory)->toBeGreaterThanOrEqual($profiler->getProfile()->startMemory);
+        expect($profiler->getProfile()->peakMemory)->toBeGreaterThanOrEqual($profiler->getProfile()->endMemory);
         
-        $profile = $profiler->result();
+        $profile = $profiler->getProfile();
         // Memory used might be 0 or positive depending on GC
         expect($profile->memoryUsed('B'))->toBeGreaterThanOrEqual(0);
         expect($profile->memoryUsed())->toMatch('/\d+\.?\d*\s+(B|KB|MB|GB|TB)/');
@@ -145,7 +145,7 @@ describe('RuntimeProfiler', function () {
 
     it('handles memory tracking when action throws exception', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         expect(function () use ($profiler) {
             $profiler->handle(function () {
@@ -155,12 +155,12 @@ describe('RuntimeProfiler', function () {
             });
         })->toThrow(Exception::class, 'Test exception');
 
-        expect(fn () => $profiler->result())->toThrow(Exception::class, 'Action has not been executed yet');
+        expect(fn () => $profiler->getProfile())->toThrow(Exception::class, 'Action has not been executed yet');
     });
 
     it('can record memory at specific points', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $result = $profiler->handle(function () use ($profiler) {
             $profiler->recordMemory('start');
@@ -177,32 +177,32 @@ describe('RuntimeProfiler', function () {
         });
 
         expect($result)->toBe(1024 * 300);
-        expect($profiler->result()->memoryRecords)->toHaveCount(3);
+        expect($profiler->getProfile()->memoryRecords)->toHaveCount(3);
         
         // Check records
-        expect($profiler->result()->memoryRecords[0]['name'])->toBe('start');
-        expect($profiler->result()->memoryRecords[0]['memory'])->toBeInt();
-        expect($profiler->result()->memoryRecords[0]['timestamp'])->toBeFloat();
+        expect($profiler->getProfile()->memoryRecords[0]['name'])->toBe('start');
+        expect($profiler->getProfile()->memoryRecords[0]['memory'])->toBeInt();
+        expect($profiler->getProfile()->memoryRecords[0]['timestamp'])->toBeFloat();
         
-        expect($profiler->result()->memoryRecords[1]['name'])->toBe('after_first_allocation');
-        expect($profiler->result()->memoryRecords[1]['memory'])->toBeInt();
-        expect($profiler->result()->memoryRecords[1]['memory'])->toBeGreaterThanOrEqual($profiler->result()->memoryRecords[0]['memory']);
+        expect($profiler->getProfile()->memoryRecords[1]['name'])->toBe('after_first_allocation');
+        expect($profiler->getProfile()->memoryRecords[1]['memory'])->toBeInt();
+        expect($profiler->getProfile()->memoryRecords[1]['memory'])->toBeGreaterThanOrEqual($profiler->getProfile()->memoryRecords[0]['memory']);
         
-        expect($profiler->result()->memoryRecords[2]['name'])->toBe('after_second_allocation');
-        expect($profiler->result()->memoryRecords[2]['memory'])->toBeInt();
-        expect($profiler->result()->memoryRecords[2]['memory'])->toBeGreaterThanOrEqual($profiler->result()->memoryRecords[1]['memory']);
+        expect($profiler->getProfile()->memoryRecords[2]['name'])->toBe('after_second_allocation');
+        expect($profiler->getProfile()->memoryRecords[2]['memory'])->toBeInt();
+        expect($profiler->getProfile()->memoryRecords[2]['memory'])->toBeGreaterThanOrEqual($profiler->getProfile()->memoryRecords[1]['memory']);
         });
 
     it('creates profile result with memory records', function () {
         $action = new ClosureAction();
-        $profiler = new RuntimeProfiler($action);
+        $profiler = new ProfileListener($action);
 
         $profiler->handle(function () use ($profiler) {
             $profiler->recordMemory('test_point');
             return 'test';
         });
 
-        $profile = $profiler->result();
+        $profile = $profiler->getProfile();
         
         expect($profile)->toBeInstanceOf(Profile::class);
         expect($profile->memoryRecords)->toHaveCount(1);

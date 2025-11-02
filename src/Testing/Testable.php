@@ -8,7 +8,8 @@ use Mockery\LegacyMockInterface;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\QueryListener;
 use Iak\Action\Testing\LogListener;
-use Iak\Action\Testing\RuntimeProfiler;
+use Iak\Action\Testing\ProfileListener;
+use Iak\Action\Testing\ProxyConfiguration;
 
 class Testable
 {
@@ -18,20 +19,20 @@ class Testable
 
     protected array $only = [];
 
+    protected bool $profileMainAction = false;
     protected array $actionsToBeProfiled = [];
     protected array $profiledActions = [];
-    protected bool $profileSelf = false;
     protected \Closure $profilesCallback;
-
+    
+    protected bool $recordMainActionDbCalls = false;
     protected array $actionsToRecordDbCalls = [];
     protected array $recordedDbCalls = [];
     protected \Closure $dbCallsCallback;
-    protected bool $recordMainActionDbCalls = false;
     
+    protected bool $recordMainActionLogs = false;
     protected array $actionsToRecordLogs = [];
     protected array $recordedLogs = [];
     protected \Closure $logsCallback;
-    protected bool $recordMainActionLogs = false;
     
     public function without(string|object|array $classes): static
     {
@@ -80,7 +81,7 @@ class Testable
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->profilesCallback = $actions;
-            $this->profileSelf = true;
+            $this->profileMainAction = true;
             return $this;
         }
 
@@ -173,11 +174,14 @@ class Testable
         };
 
         // Profile layer
-        if ($this->profileSelf) {
-            $execute = function () use ($args) {
-                $profiler = new RuntimeProfiler($this->action, $this->action);
-                $result = $profiler->handle(...$args);
-                $this->addProfile($profiler->result());
+        if ($this->profileMainAction) {
+            $previous = $execute;
+            $execute = function () use ($previous, $args) {
+                $listener = new ProfileListener($this->action, $this->action);
+                $result = $listener->listen(function () use ($previous) {
+                    return $previous();
+                });
+                $this->addProfile($listener->getProfile());
                 return $result;
             };
         }
@@ -251,6 +255,23 @@ class Testable
         $this->profiledActions[] = $profile;
     }
 
+    public function createProfileListener($action, $eventSource): ProfileListener
+    {
+        return new ProfileListener($action, $eventSource);
+    }
+
+    public function createQueryListener($action, $eventSource): QueryListener
+    {
+        $actionClass = get_class($action);
+        return new QueryListener($actionClass);
+    }
+
+    public function createLogListener($action, $eventSource): LogListener
+    {
+        $actionClass = get_class($action);
+        return new LogListener($actionClass);
+    }
+
     protected function interceptProfiles(): void
     {
         foreach ($this->actionsToBeProfiled as $actionToBeProfiled) {
@@ -260,8 +281,13 @@ class Testable
                         
             $this->bindProxyWrapper($actionToBeProfiled, function ($action) use ($actionToBeProfiled) {
                 // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createProfileProxyClass($actionToBeProfiled);
-                return new $proxyClass($this, $action);
+                $proxyClass = $this->createProxyClass($actionToBeProfiled);
+                $config = new ProxyConfiguration(
+                    fn($action, $eventSource) => $this->createProfileListener($action, $eventSource),
+                    fn($testable, $resultData) => $testable->addProfile($resultData),
+                    fn($listener) => $listener->getProfile()
+                );
+                return new $proxyClass($this, $action, $config);
             });
         }
     }
@@ -279,8 +305,13 @@ class Testable
                         
             $this->bindProxyWrapper($actionToRecordDbCalls, function ($action) use ($actionToRecordDbCalls) {
                 // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createDatabaseProxyClass($actionToRecordDbCalls);
-                return new $proxyClass($this, $action);
+                $proxyClass = $this->createProxyClass($actionToRecordDbCalls);
+                $config = new ProxyConfiguration(
+                    fn($action, $eventSource) => $this->createQueryListener($action, $eventSource),
+                    fn($testable, $resultData) => $testable->addQueries($resultData),
+                    fn($listener) => $listener->getQueries()
+                );
+                return new $proxyClass($this, $action, $config);
             });
         }
     }
@@ -298,8 +329,13 @@ class Testable
                         
             $this->bindProxyWrapper($actionToRecordLogs, function ($action) use ($actionToRecordLogs) {
                 // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createLogProxyClass($actionToRecordLogs);
-                return new $proxyClass($this, $action);
+                $proxyClass = $this->createProxyClass($actionToRecordLogs);
+                $config = new ProxyConfiguration(
+                    fn($action, $eventSource) => $this->createLogListener($action, $eventSource),
+                    fn($testable, $resultData) => $testable->addLogs($resultData),
+                    fn($listener) => $listener->getLogs()
+                );
+                return new $proxyClass($this, $action, $config);
             });
         }
     }
@@ -333,14 +369,15 @@ class Testable
         });
     }
 
-    protected function createProfileProxyClass(string $profile): string
-    {
-        // Create a dynamic proxy class that extends the action and uses RuntimeProfiler
-        $proxyClass = 'ProfileProxy_' . md5($profile . spl_object_id($this));
-        $fqcn = '\\' . ltrim($profile, '\\');
+    protected function createProxyClass(
+        string $actionClass,
+    ): string {
+        // Create a dynamic proxy class that extends the action and uses the proxy trait
+        $proxyClass = "Proxy_" . md5($actionClass . spl_object_id($this));
+        $fqcn = '\\' . ltrim($actionClass, '\\');
 
-        if (!class_exists($profile)) {
-            throw new \InvalidArgumentException("Invalid profile class: $profile");
+        if (!class_exists($actionClass)) {
+            throw new \InvalidArgumentException("Invalid class: $actionClass");
         }
 
         // Check if class already exists
@@ -351,59 +388,7 @@ class Testable
         $code = <<<PHP
     final class $proxyClass extends $fqcn 
     {
-    use \\Iak\\Action\\Testing\\Traits\\ProfileProxyTrait;
-    }
-    PHP;
-        eval($code);
-
-        return $proxyClass;
-    }
-
-    protected function createDatabaseProxyClass(string $actionToRecord): string
-    {
-        // Create a dynamic proxy class that extends the action and records database calls
-        $proxyClass = 'DatabaseProxy_' . md5($actionToRecord . spl_object_id($this));
-        $fqcn = '\\' . ltrim($actionToRecord, '\\');
-
-        if (!class_exists($actionToRecord)) {
-            throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecord");
-        }
-
-        // Check if class already exists
-        if (class_exists($proxyClass)) {
-            return $proxyClass;
-        }
-
-        $code = <<<PHP
-    final class $proxyClass extends $fqcn 
-    {
-    use \\Iak\\Action\\Testing\\Traits\\DatabaseCallProxyTrait;
-    }
-    PHP;
-        eval($code);
-
-        return $proxyClass;
-    }
-
-    protected function createLogProxyClass(string $actionToRecord): string
-    {
-        // Create a dynamic proxy class that extends the action and records logs
-        $proxyClass = 'LogProxy_' . md5($actionToRecord . spl_object_id($this));
-        $fqcn = '\\' . ltrim($actionToRecord, '\\');
-
-        if (!class_exists($actionToRecord)) {
-            throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecord");
-        }
-
-        // Check if class already exists
-        if (class_exists($proxyClass)) {
-            return $proxyClass;
-        }
-
-        $code = <<<PHP
-    final class $proxyClass extends $fqcn 
-    {
-    use \\Iak\\Action\\Testing\\Traits\\LogProxyTrait;
+    use \\Iak\\Action\\Testing\\Traits\\ProxyTrait;
     }
     PHP;
         eval($code);

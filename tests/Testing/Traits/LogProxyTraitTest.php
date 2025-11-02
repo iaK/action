@@ -2,7 +2,9 @@
 
 use Iak\Action\Testing\Testable;
 use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Testing\Traits\LogProxyTrait;
+use Iak\Action\Testing\Traits\ProxyTrait;
+use Iak\Action\Testing\ProxyConfiguration;
+use Iak\Action\Testing\LogListener;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 
 describe('LogProxyTrait', function () {
@@ -10,8 +12,13 @@ describe('LogProxyTrait', function () {
         $testable = $this->createMock(Testable::class);
         $action = new ClosureAction();
         
-        $proxy = new class($testable, $action) extends ClosureAction {
-            use LogProxyTrait;
+        $config = new ProxyConfiguration(
+            fn($action, $eventSource) => new LogListener(get_class($action)),
+            fn($testable, $resultData) => $testable->addLogs($resultData),
+            fn($listener) => $listener->getLogs()
+        );
+        $proxy = new class($testable, $action, $config) extends ClosureAction {
+            use ProxyTrait;
         };
         
         expect($proxy)->toBeInstanceOf(ClosureAction::class);
@@ -29,8 +36,13 @@ describe('LogProxyTrait', function () {
                ->method('handle')
                ->willReturn('test result');
         
-        $proxy = new class($testable, $action) extends ClosureAction {
-            use LogProxyTrait;
+        $config = new ProxyConfiguration(
+            fn($action, $eventSource) => new LogListener(get_class($action)),
+            fn($testable, $resultData) => $testable->addLogs($resultData),
+            fn($listener) => $listener->getLogs()
+        );
+        $proxy = new class($testable, $action, $config) extends ClosureAction {
+            use ProxyTrait;
         };
         
         $result = $proxy->handle();
@@ -50,8 +62,13 @@ describe('LogProxyTrait', function () {
                ->method('handle')
                ->willReturn('test result');
         
-        $proxy = new class($testable, $action) extends ClosureAction {
-            use LogProxyTrait;
+        $config = new ProxyConfiguration(
+            fn($action, $eventSource) => new LogListener(get_class($action)),
+            fn($testable, $resultData) => $testable->addLogs($resultData),
+            fn($listener) => $listener->getLogs()
+        );
+        $proxy = new class($testable, $action, $config) extends ClosureAction {
+            use ProxyTrait;
         };
         
         $proxy->handle();
@@ -71,8 +88,13 @@ describe('LogProxyTrait', function () {
                ->method('handle')
                ->willReturn('test result');
         
-        $proxy = new class($testable, $action) extends ClosureAction {
-            use LogProxyTrait;
+        $config = new ProxyConfiguration(
+            fn($action, $eventSource) => new LogListener(get_class($action)),
+            fn($testable, $resultData) => $testable->addLogs($resultData),
+            fn($listener) => $listener->getLogs()
+        );
+        $proxy = new class($testable, $action, $config) extends ClosureAction {
+            use ProxyTrait;
         };
         
         $result = $proxy->handle();

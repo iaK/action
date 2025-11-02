@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Iak\Action\Testing\Results\Query;
 use Illuminate\Database\Events\QueryExecuted;
 
-class QueryListener
+class QueryListener implements Listener
 {
     protected bool $enabled = false;
     protected array $queries = [];

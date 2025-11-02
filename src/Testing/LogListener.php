@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Log;
 use Monolog\Handler\AbstractHandler;
 use Iak\Action\Testing\Results\Entry;
 
-class LogListener
+class LogListener implements Listener
 {
     protected bool $enabled = false;
     protected array $logs = [];
