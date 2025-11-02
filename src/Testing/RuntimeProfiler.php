@@ -81,10 +81,5 @@ class ProfileListener implements Listener
             $this->memoryRecords
         );
     }
-
-    public function __call($name, $arguments)
-    {
-        return $this->action->$name(...$arguments);
-    }
 }
 

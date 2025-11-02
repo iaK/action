@@ -6,8 +6,7 @@ use Illuminate\Support\Facades\Event;
 
 trait HandlesEvents
 {
-    protected array $forwardEvents = [];
-    
+    protected array $forwardedEvents = [];
     protected array $propagatedTo = [];
 
     /**
@@ -32,7 +31,7 @@ trait HandlesEvents
         // Fire event locally
         event($this->generateEventName($event), [$data]);
 
-        if (!empty($this->forwardEvents)) {
+        if (!empty($this->forwardedEvents)) {
             $this->propagateToAncestor($event, $data);
         }
     
@@ -41,7 +40,7 @@ trait HandlesEvents
 
     public function forwardEvents(?array $events = null): static
     {
-        $this->forwardEvents = $events ?? $this->getAllowedEvents();
+        $this->forwardedEvents = $events ?? $this->getAllowedEvents();
 
         return $this;
     }

@@ -83,7 +83,7 @@ describe('HandlesEvents Trait', function () {
         
         // Use reflection to access the protected property
         $reflection = new ReflectionClass($action);
-        $property = $reflection->getProperty('forwardEvents');
+        $property = $reflection->getProperty('forwardedEvents');
         $property->setAccessible(true);
         expect($property->getValue($action))->toBe(['test.event.a']);
     });
@@ -97,7 +97,7 @@ describe('HandlesEvents Trait', function () {
         
         // Use reflection to access the protected property
         $reflection = new ReflectionClass($action);
-        $property = $reflection->getProperty('forwardEvents');
+        $property = $reflection->getProperty('forwardedEvents');
         $property->setAccessible(true);
         expect($property->getValue($action))->toBe(['test.event.a', 'test.event.b']);
     });
