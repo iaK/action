@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Event;
 trait HandlesEvents
 {
     protected array $forwardEvents = [];
+    
+    protected array $propagatedTo = [];
 
     /**
      * Listen for an event emitted by this object
@@ -49,8 +51,6 @@ trait HandlesEvents
      */
     protected function propagateToAncestor(string $event, $data): void
     {
-        static $propagatedTo = [];
-        
         $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
 
         array_shift($trace);
@@ -65,7 +65,7 @@ trait HandlesEvents
             // Create a unique key for this propagation to prevent circular references
             $propagationKey = spl_object_hash($this) . '->' . spl_object_hash($ancestor) . ':' . $event;
             
-            if (isset($propagatedTo[$propagationKey])) {
+            if (isset($this->propagatedTo[$propagationKey])) {
                 continue; // Already propagated this event from this object to this ancestor
             }
             
@@ -83,7 +83,7 @@ trait HandlesEvents
 
             // Only propagate if ancestor allows this event
             if (in_array($event, $ancestor->getAllowedEvents())) {
-                $propagatedTo[$propagationKey] = true;
+                $this->propagatedTo[$propagationKey] = true;
                 $ancestor->event($event, $data);
             }
     

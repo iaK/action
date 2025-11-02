@@ -411,7 +411,6 @@ class Testable
         return $proxyClass;
     }
 
-
     protected function handleOnly(): void
     {
         if (empty($this->only)) {
