@@ -5,7 +5,7 @@ use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 describe('Database Feature', function () {
-    it('can record database calls for the calling action', function () {
+    it('can record database calls for the calling action', function () {        
         $result = ClosureAction::test()
         ->queries(function (array $dbCalls) {
             expect($dbCalls)->toHaveCount(2);

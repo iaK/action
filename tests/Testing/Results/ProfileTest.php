@@ -1,7 +1,8 @@
 <?php
 
-use Iak\Action\Testing\Results\Profile;
 use Carbon\CarbonInterval;
+use Iak\Action\Testing\Results\Memory;
+use Iak\Action\Testing\Results\Profile;
 
 describe('Profile', function () {
     it('can create profile', function () {
@@ -183,27 +184,27 @@ describe('Profile', function () {
 
     it('can create profile with memory records', function () {
         $memoryRecords = [
-            ['name' => 'start', 'memory' => 1024, 'timestamp' => 1000.1],
-            ['name' => 'middle', 'memory' => 2048, 'timestamp' => 1000.5],
-            ['name' => 'end', 'memory' => 3072, 'timestamp' => 1000.9]
+            new Memory('start', 1024, 1000.1),
+            new Memory('middle', 2048, 1000.5),
+            new Memory('end', 3072, 1000.9)
         ];
         
         $profile = new Profile('TestClass', 1000.0, 1001.0, 1024, 2048, 3072, $memoryRecords);
         
         expect($profile->memoryRecords)->toHaveCount(3);
-        expect($profile->memoryRecords[0]['name'])->toBe('start');
-        expect($profile->memoryRecords[0]['memory'])->toBe(1024);
-        expect($profile->memoryRecords[1]['name'])->toBe('middle');
-        expect($profile->memoryRecords[1]['memory'])->toBe(2048);
-        expect($profile->memoryRecords[2]['name'])->toBe('end');
-        expect($profile->memoryRecords[2]['memory'])->toBe(3072);
-        });
+        expect($profile->memoryRecords[0]->name)->toBe('start');
+        expect($profile->memoryRecords[0]->memory)->toBe(1024);
+        expect($profile->memoryRecords[1]->name)->toBe('middle');
+        expect($profile->memoryRecords[1]->memory)->toBe(2048);
+        expect($profile->memoryRecords[2]->name)->toBe('end');
+        expect($profile->memoryRecords[2]->memory)->toBe(3072);
+    });
 
     it('can get formatted memory records', function () {
         $memoryRecords = [
-            ['name' => 'start', 'memory' => 1024, 'timestamp' => 1000.1],
-            ['name' => 'middle', 'memory' => 2048, 'timestamp' => 1000.5],
-            ['name' => 'end', 'memory' => 3072, 'timestamp' => 1000.9]
+            new Memory('start', 1024, 1000.1),
+            new Memory('middle', 2048, 1000.5),
+            new Memory('end', 3072, 1000.9)
         ];
         
         $profile = new Profile('TestClass', 1000.0, 1001.0, 1024, 2048, 3072, $memoryRecords);
@@ -212,32 +213,29 @@ describe('Profile', function () {
         expect($records)->toHaveCount(3);
         
         // Check first record
-        expect($records[0]['name'])->toBe('start');
-        expect($records[0]['memory'])->toBe(1024);
-        expect($records[0]['memory_formatted'])->toBe('1 KB');
-        expect($records[0]['timestamp'])->toBe(1000.1);
-        expect(abs($records[0]['relative_time'] - 0.1))->toBeLessThan(0.0001);
+        expect($records[0]->name)->toBe('start');
+        expect($records[0]->memory)->toBe(1024);
+        expect($records[0]->formattedMemory())->toBe('1 KB');
+        expect($records[0]->timestamp)->toBe(1000.1);
         
         // Check second record
-        expect($records[1]['name'])->toBe('middle');
-        expect($records[1]['memory'])->toBe(2048);
-        expect($records[1]['memory_formatted'])->toBe('2 KB');
-        expect($records[1]['timestamp'])->toBe(1000.5);
-        expect(abs($records[1]['relative_time'] - 0.5))->toBeLessThan(0.0001);
-        
+        expect($records[1]->name)->toBe('middle');
+        expect($records[1]->memory)->toBe(2048);
+        expect($records[1]->formattedMemory())->toBe('2 KB');
+        expect($records[1]->timestamp)->toBe(1000.5);
+                
         // Check third record
-        expect($records[2]['name'])->toBe('end');
-        expect($records[2]['memory'])->toBe(3072);
-        expect($records[2]['memory_formatted'])->toBe('3 KB');
-        expect($records[2]['timestamp'])->toBe(1000.9);
-        expect(abs($records[2]['relative_time'] - 0.9))->toBeLessThan(0.0001);
-        });
+        expect($records[2]->name)->toBe('end');
+        expect($records[2]->memory)->toBe(3072);
+        expect($records[2]->formattedMemory())->toBe('3 KB');
+        expect($records[2]->timestamp)->toBe(1000.9);
+    });
 
     it('returns empty array when no memory records', function () {
         $profile = new Profile('TestClass', 1000.0, 1001.0, 1024, 2048, 3072);
         
         expect($profile->records())->toBe([]);
         expect($profile->memoryRecords)->toBe([]);
-        });
+    });
 });
 

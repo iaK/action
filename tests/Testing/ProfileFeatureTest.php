@@ -125,14 +125,14 @@ describe('Profile Feature', function () {
         ClosureAction::test()
         ->profile(function (array $profiles) {
             expect($profiles)->toHaveCount(1);
-            expect($profiles[0]->records()[0]['name'])->toBe('start');
-            expect($profiles[0]->records()[1]['name'])->toBe('end');
+            expect($profiles[0]->records()[0]->name)->toBe('start');
+            expect($profiles[0]->records()[1]->name)->toBe('end');
         })
         ->handle(function ($action) {
             $action->recordMemory('start');
             $action->recordMemory('end');
         });
-        });
+    });
 
     it('can access memory records through profile on the provided action', function () {
         $result = ClosureAction::test()
@@ -140,7 +140,7 @@ describe('Profile Feature', function () {
             expect($profiles)->toHaveCount(1);
             $profile = $profiles[0];
             $records = $profile->records();
-            expect($records[0]['name'])->toBe('start');
+            expect($records[0]->name)->toBe('start');
         })
         ->handle(function () {
             ClosureAction::make()->handle(function ($action) {
@@ -150,7 +150,7 @@ describe('Profile Feature', function () {
         });
 
         expect($result)->toBe('done');
-        });
+    });
 
     it('throws exception when profile method receives invalid callback', function () {
         expect(fn () => ClosureAction::test()->profile(ClosureAction::class))

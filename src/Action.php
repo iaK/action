@@ -8,6 +8,9 @@ use Iak\Action\Testing\Testable;
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
 
+/**
+ * @method mixed handle(...$args) Execute the action with the given arguments. This method must be implemented by concrete action classes.
+ */
 abstract class Action
 {
     use HandlesEvents;

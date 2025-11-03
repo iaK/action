@@ -5,10 +5,14 @@ namespace Iak\Action\Testing;
 use Iak\Action\Action;
 use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
-use Iak\Action\Testing\Results\Profile;
-use Iak\Action\Testing\QueryListener;
+use Illuminate\Pipeline\Pipeline;
+use Illuminate\Support\Collection;
 use Iak\Action\Testing\LogListener;
+use Iak\Action\Testing\QueryListener;
+use Iak\Action\Testing\Results\Entry;
+use Iak\Action\Testing\Results\Query;
 use Iak\Action\Testing\ProfileListener;
+use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\ProxyConfiguration;
 
 class Testable
@@ -17,23 +21,34 @@ class Testable
         public Action $action
     ) {}
 
+    /** @var array<class-string> */
     protected array $only = [];
 
     protected bool $profileMainAction = false;
+    /** @var array<class-string> */
     protected array $actionsToBeProfiled = [];
+    /** @var array<Profile> */
     protected array $profiledActions = [];
     protected \Closure $profilesCallback;
     
     protected bool $recordMainActionDbCalls = false;
+    /** @var array<class-string> */
     protected array $actionsToRecordDbCalls = [];
+    /** @var array<Query> */
     protected array $recordedDbCalls = [];
     protected \Closure $dbCallsCallback;
     
     protected bool $recordMainActionLogs = false;
+    /** @var array<class-string> */
     protected array $actionsToRecordLogs = [];
+    /** @var array<Entry> */
     protected array $recordedLogs = [];
     protected \Closure $logsCallback;
     
+    /**
+     * @param string|object|array<class-string|object> $classes
+     * @return static
+     */
     public function without(string|object|array $classes): static
     {
         $classes = is_array($classes) ? $classes : [$classes];
@@ -64,7 +79,10 @@ class Testable
         return $this;
     }
 
-    public function only(string|array $classes): static
+    /**
+     * @param string|array<class-string|object> $classes
+     */
+    public function only(string|array $classes ): static
     {
         $classes = is_array($classes) ? $classes : [$classes];
 
@@ -74,10 +92,10 @@ class Testable
     }
 
     /**
-     * @param  \Closure|string|array  $actions
-     * @param  ?\Closure|null  $callback
+     * @param  \Closure|string|array<class-string>  $actions
+     * @param  ?\Closure  $callback
      */
-    public function profile($actions, ?\Closure $callback = null) 
+    public function profile($actions, ?\Closure $callback = null) : static
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->profilesCallback = $actions;
@@ -103,10 +121,10 @@ class Testable
     }
 
     /**
-     * @param  \Closure|string|array  $actions
-     * @param  ?\Closure|null  $callback
+     * @param  \Closure|string|array<class-string>  $actions
+     * @param  ?\Closure  $callback
      */
-    public function queries($actions, ?\Closure $callback = null) 
+    public function queries($actions, ?\Closure $callback = null) : static
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->dbCallsCallback = $actions;
@@ -133,10 +151,10 @@ class Testable
     }
 
     /**
-     * @param  \Closure|string|array  $actions
-     * @param  ?\Closure|null  $callback
+     * @param  \Closure|string|array<class-string>  $actions
+     * @param  ?\Closure  $callback
      */
-    public function logs($actions, ?\Closure $callback = null) 
+    public function logs($actions, ?\Closure $callback = null) : static
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->logsCallback = $actions;
@@ -161,77 +179,101 @@ class Testable
         return $this;
     }
 
-    public function handle(...$args)
+    public function handle(mixed ...$args): mixed
     {
         $this->handleOnly();
+
         $this->interceptProfiles();
         $this->interceptDatabaseCalls();
         $this->interceptLogs();
 
-        // Build an executable pipeline so logs, queries, and profile can be combined
-        $execute = function () use ($args) {
-            return $this->action->handle(...$args);
-        };
+        // Pass through pipeline pipes for instrumentation layers
+        $pipes = $this->buildPipelinePipes();
 
-        // Profile layer
-        if ($this->profileMainAction) {
-            $previous = $execute;
-            $execute = function () use ($previous, $args) {
-                $listener = new ProfileListener($this->action, $this->action);
-                $result = $listener->listen(function () use ($previous) {
-                    return $previous();
-                });
-                $this->addProfile($listener->getProfile());
-                return $result;
-            };
-        }
-
-        // Database queries layer
-        if ($this->recordMainActionDbCalls) {
-            $previous = $execute;
-            $execute = function () use ($previous) {
-                $listener = new QueryListener($this->action::class);
-                $result = $listener->listen(function () use ($previous) {
-                    return $previous();
-                });
-                $this->addQueries($listener->getQueries());
-                return $result;
-            };
-        }
-
-        // Logs layer
-        if ($this->recordMainActionLogs) {
-            $previous = $execute;
-            $execute = function () use ($previous) {
-                $listener = new LogListener($this->action::class);
-                $result = $listener->listen(function () use ($previous) {
-                    return $previous();
-                });
-                $this->addLogs($listener->getLogs());
-                return $result;
-            };
-        }
+        $execute = app(Pipeline::class)
+            ->send(function () use ($args) {
+                return $this->action->handle(...$args);
+            })
+            ->through($pipes->toArray())
+            ->thenReturn();
 
         $result = $execute();
 
         if (isset($this->profilesCallback)) {
-            $profilesCallback = $this->profilesCallback;
-            $profilesCallback($this->profiledActions);
+            ($this->profilesCallback)($this->profiledActions);
         }
 
         if (isset($this->dbCallsCallback)) {
-            $dbCallsCallback = $this->dbCallsCallback;
-            $dbCallsCallback($this->recordedDbCalls);
+            ($this->dbCallsCallback)($this->recordedDbCalls);
         }
 
         if (isset($this->logsCallback)) {
-            $logsCallback = $this->logsCallback;
-            $logsCallback($this->recordedLogs);
+            ($this->logsCallback)($this->recordedLogs);
         }
 
         return $result;
     }
 
+    /**
+     * Build the array of pipeline pipes to apply based on enabled features.
+     * Pipes are applied in order: first pipe becomes outermost wrapper.
+     * This creates: Logs -> DB -> Profile -> Base execution
+     * @return Collection<int, \Closure>
+     */
+    protected function buildPipelinePipes(): Collection
+    {
+        return collect()
+            ->when($this->recordMainActionLogs, function ($pipes) {
+                return $pipes->push(function (\Closure $execute, \Closure $next) {
+                    // Call next to get the closure wrapped by subsequent pipes
+                    $wrapped = $next($execute);
+                    // Wrap it with log instrumentation (outermost)
+                    return function () use ($wrapped) {
+                        $listener = new LogListener($this->action::class);
+                        $result = $listener->listen(function () use ($wrapped) {
+                            return $wrapped();
+                        });
+                        $this->addLogs($listener->getLogs());
+                        return $result;
+                    };
+                });
+            })
+            ->when($this->recordMainActionDbCalls, function ($pipes) {
+                return $pipes->push(function (\Closure $execute, \Closure $next) {
+                    // Call next to get the closure wrapped by subsequent pipes
+                    $wrapped = $next($execute);
+                    // Wrap it with database query instrumentation (middle)
+                    return function () use ($wrapped) {
+                        $listener = new QueryListener($this->action::class);
+                        $result = $listener->listen(function () use ($wrapped) {
+                            return $wrapped();
+                        });
+                        $this->addQueries($listener->getQueries());
+                        return $result;
+                    };
+                });
+            })
+            ->when($this->profileMainAction, function ($pipes) {
+                return $pipes->push(function (\Closure $execute, \Closure $next) {
+                    // Call next to get the closure wrapped by subsequent pipes
+                    $wrapped = $next($execute);
+                    // Wrap it with profile instrumentation (innermost - wraps base)
+                    return function () use ($wrapped) {
+                        $listener = new ProfileListener($this->action, $this->action);
+                        $result = $listener->listen(function () use ($wrapped) {
+                            return $wrapped();
+                        });
+                        $this->addProfile($listener->getProfile());
+                        return $result;
+                    };
+                });
+            });
+    }
+
+
+    /**
+     * @param array<Query> $queries
+     */
     public function addQueries(array $queries): void
     {
         if (empty($queries)) {
@@ -241,6 +283,9 @@ class Testable
         $this->recordedDbCalls = array_merge($this->recordedDbCalls, $queries);
     }
 
+    /**
+     * @param array<Entry> $logs
+     */
     public function addLogs(array $logs): void
     {
         if (empty($logs)) {
@@ -250,26 +295,12 @@ class Testable
         $this->recordedLogs = array_merge($this->recordedLogs, $logs);
     }
 
+    /**
+     * @param Profile $profile
+     */
     public function addProfile(Profile $profile): void
     {
         $this->profiledActions[] = $profile;
-    }
-
-    public function createProfileListener($action, $eventSource): ProfileListener
-    {
-        return new ProfileListener($action, $eventSource);
-    }
-
-    public function createQueryListener($action, $eventSource): QueryListener
-    {
-        $actionClass = get_class($action);
-        return new QueryListener($actionClass);
-    }
-
-    public function createLogListener($action, $eventSource): LogListener
-    {
-        $actionClass = get_class($action);
-        return new LogListener($actionClass);
     }
 
     protected function interceptProfiles(): void
@@ -283,7 +314,7 @@ class Testable
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToBeProfiled);
                 $config = new ProxyConfiguration(
-                    fn($action, $eventSource) => $this->createProfileListener($action, $eventSource),
+                    fn($action, $eventSource) => new ProfileListener($action, $eventSource),
                     fn($testable, $resultData) => $testable->addProfile($resultData),
                     fn($listener) => $listener->getProfile()
                 );
@@ -307,7 +338,7 @@ class Testable
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToRecordDbCalls);
                 $config = new ProxyConfiguration(
-                    fn($action, $eventSource) => $this->createQueryListener($action, $eventSource),
+                    fn($action, $eventSource) => new QueryListener(get_class($action)),
                     fn($testable, $resultData) => $testable->addQueries($resultData),
                     fn($listener) => $listener->getQueries()
                 );
@@ -331,7 +362,7 @@ class Testable
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToRecordLogs);
                 $config = new ProxyConfiguration(
-                    fn($action, $eventSource) => $this->createLogListener($action, $eventSource),
+                    fn($action, $eventSource) => new LogListener(get_class($action)),
                     fn($testable, $resultData) => $testable->addLogs($resultData),
                     fn($listener) => $listener->getLogs()
                 );
@@ -430,7 +461,12 @@ class Testable
         });
     }
 
-    protected function getClassAndReturnValue($class, $key): array
+    /**
+     * @param string|object|array<class-string|object> $class
+     * @param string|int $key
+     * @return array<string|object|null>
+     */
+    protected function getClassAndReturnValue(string|object|array $class, string|int $key): array
     {
         if (is_string($key)) {
             return [$key, $class];

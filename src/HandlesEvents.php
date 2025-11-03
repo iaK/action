@@ -6,7 +6,9 @@ use Illuminate\Support\Facades\Event;
 
 trait HandlesEvents
 {
+    /** @var string[] */
     protected array $forwardedEvents = [];
+    /** @var array<string, bool> */
     protected array $propagatedTo = [];
 
     /**
@@ -24,7 +26,7 @@ trait HandlesEvents
     /**
      * Emit an event from this object and propagate to first ancestor using the trait
      */
-    public function event(string $event, $data): static
+    public function event(string $event, mixed $data): static
     {
         $this->throwIfEventNotAllowed($event, "Cannot emit event '{$event}'.");
     
@@ -38,6 +40,9 @@ trait HandlesEvents
         return $this;
     }
 
+    /**
+     * @param string[]|null $events
+     */
     public function forwardEvents(?array $events = null): static
     {
         $this->forwardedEvents = $events ?? $this->getAllowedEvents();
@@ -47,6 +52,9 @@ trait HandlesEvents
     
     /**
      * Inspect the call stack for the first trait-capable ancestor and propagate the event
+     * 
+     * @param string $event
+     * @param mixed $data
      */
     protected function propagateToAncestor(string $event, $data): void
     {
@@ -92,6 +100,8 @@ trait HandlesEvents
     
     /**
      * Get allowed events declared via #[EmitsEvents(...)]
+     * 
+     * @return string[]
      */
     public function getAllowedEvents(): array
     {

@@ -1,31 +1,6 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Access to an undefined property Iak\\Action\\Action\:\:\$forwardEvents\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Action.php
-
-		-
-			message: '#^Parameter \#2 \$start of class Iak\\Action\\Profile constructor expects float, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/ActionMeasurer.php
-
-		-
-			message: '#^Parameter \#3 \$end of class Iak\\Action\\Profile constructor expects float, string given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/ActionMeasurer.php
-
-		-
-			message: '#^Property Iak\\Action\\ActionMeasurer\:\:\$end \(string\) does not accept float\.$#'
-			identifier: assign.propertyType
-			count: 1
-			path: src/ActionMeasurer.php
-
-		-
-			message: '#^Property Iak\\Action\\ActionMeasurer\:\:\$start \(string\) does not accept float\.$#'
-			identifier: assign.propertyType
-			count: 1
-			path: src/ActionMeasurer.php
+			message: '#^Trait Iak\\Action\\Testing\\Traits\\ProxyTrait is used zero times and is not analysed.$#'
+			identifier: trait.unused
+			path: src/Testing/Traits/ProxyTrait.php  

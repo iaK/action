@@ -8,16 +8,14 @@ use InvalidArgumentException;
 #[Attribute(Attribute::TARGET_CLASS)]
 class EmitsEvents
 {
-    public function __construct(public array $events)
+
+    public function __construct(
+        /** @var string[] */
+        public array $events
+    )
     {
         if (empty($events)) {
             throw new InvalidArgumentException('Events array cannot be empty');
-        }
-
-        foreach ($events as $event) {
-            if (! is_string($event)) {
-                throw new InvalidArgumentException('All events must be strings');
-            }
         }
     }
 }

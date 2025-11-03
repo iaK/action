@@ -8,6 +8,7 @@ class Query
 {
     public function __construct(
         public string $query,
+        /** @var array<mixed> */
         public array $bindings,
         public float $time,
         public string $connection = 'default',

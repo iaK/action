@@ -9,8 +9,9 @@ use Illuminate\Database\Events\QueryExecuted;
 class QueryListener implements Listener
 {
     protected bool $enabled = false;
+    /** @var Query[] */
     protected array $queries = [];
-    protected $listener;
+    protected \Closure $listener;
     protected ?string $action;
     protected bool $isRegistered = false;
 
@@ -28,15 +29,10 @@ class QueryListener implements Listener
                 $query->sql,
                 $query->bindings,
                 $query->time / 1000, // Convert milliseconds to seconds
-                $query->connectionName ?? 'default',
+                $query->connectionName,
                 $this->action
             );
         };
-    }
-
-    public function __destruct()
-    {
-        $this->unregisterListener();
     }
 
     public function listen(callable $callback): mixed
@@ -48,7 +44,6 @@ class QueryListener implements Listener
             return $callback();
         } finally {
             $this->enabled = false;
-            $this->unregisterListener();
         }
     }
 
@@ -60,20 +55,9 @@ class QueryListener implements Listener
         }
     }
 
-    protected function unregisterListener(): void
-    {
-        if ($this->isRegistered) {
-            $dispatcher = DB::getEventDispatcher();
-            if ($dispatcher) {
-                // Note: forget() removes all listeners for this event.
-                // This is acceptable in a testing context as tests should
-                // set up their own listeners as needed.
-                $dispatcher->forget(QueryExecuted::class);
-            }
-            $this->isRegistered = false;
-        }
-    }
-
+    /**
+     * @return Query[]
+     */
     public function getQueries(): array
     {
         return $this->queries;

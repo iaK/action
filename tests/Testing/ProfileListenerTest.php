@@ -103,7 +103,7 @@ describe('ProfileListener', function () {
 
         expect($durationMs)->toBeGreaterThan(5); // Should be at least 5ms
         expect($durationMs)->toBeLessThan(50);   // Should be less than 50ms
-        });
+    });
 
     it('handles action that throws exception', function () {
         $action = new ClosureAction();
@@ -141,7 +141,7 @@ describe('ProfileListener', function () {
         // Memory used might be 0 or positive depending on GC
         expect($profile->memoryUsed('B'))->toBeGreaterThanOrEqual(0);
         expect($profile->memoryUsed())->toMatch('/\d+\.?\d*\s+(B|KB|MB|GB|TB)/');
-        });
+    });
 
     it('handles memory tracking when action throws exception', function () {
         $action = new ClosureAction();
@@ -180,18 +180,18 @@ describe('ProfileListener', function () {
         expect($profiler->getProfile()->memoryRecords)->toHaveCount(3);
         
         // Check records
-        expect($profiler->getProfile()->memoryRecords[0]['name'])->toBe('start');
-        expect($profiler->getProfile()->memoryRecords[0]['memory'])->toBeInt();
-        expect($profiler->getProfile()->memoryRecords[0]['timestamp'])->toBeFloat();
+        expect($profiler->getProfile()->memoryRecords[0]->name)->toBe('start');
+        expect($profiler->getProfile()->memoryRecords[0]->memory)->toBeInt();
+        expect($profiler->getProfile()->memoryRecords[0]->timestamp)->toBeFloat();
         
-        expect($profiler->getProfile()->memoryRecords[1]['name'])->toBe('after_first_allocation');
-        expect($profiler->getProfile()->memoryRecords[1]['memory'])->toBeInt();
-        expect($profiler->getProfile()->memoryRecords[1]['memory'])->toBeGreaterThanOrEqual($profiler->getProfile()->memoryRecords[0]['memory']);
+        expect($profiler->getProfile()->memoryRecords[1]->name)->toBe('after_first_allocation');
+        expect($profiler->getProfile()->memoryRecords[1]->memory)->toBeInt();
+        expect($profiler->getProfile()->memoryRecords[1]->memory)->toBeGreaterThanOrEqual($profiler->getProfile()->memoryRecords[0]->memory);
         
-        expect($profiler->getProfile()->memoryRecords[2]['name'])->toBe('after_second_allocation');
-        expect($profiler->getProfile()->memoryRecords[2]['memory'])->toBeInt();
-        expect($profiler->getProfile()->memoryRecords[2]['memory'])->toBeGreaterThanOrEqual($profiler->getProfile()->memoryRecords[1]['memory']);
-        });
+        expect($profiler->getProfile()->memoryRecords[2]->name)->toBe('after_second_allocation');
+        expect($profiler->getProfile()->memoryRecords[2]->memory)->toBeInt();
+        expect($profiler->getProfile()->memoryRecords[2]->memory)->toBeGreaterThanOrEqual($profiler->getProfile()->memoryRecords[1]->memory);
+    });
 
     it('creates profile result with memory records', function () {
         $action = new ClosureAction();
@@ -206,17 +206,16 @@ describe('ProfileListener', function () {
         
         expect($profile)->toBeInstanceOf(Profile::class);
         expect($profile->memoryRecords)->toHaveCount(1);
-        expect($profile->memoryRecords[0]['name'])->toBe('test_point');
-        expect($profile->memoryRecords[0]['memory'])->toBeInt();
-        expect($profile->memoryRecords[0]['timestamp'])->toBeFloat();
+        expect($profile->memoryRecords[0]->name)->toBe('test_point');
+        expect($profile->memoryRecords[0]->memory)->toBeInt();
+        expect($profile->memoryRecords[0]->timestamp)->toBeFloat();
         
         $records = $profile->records();
         expect($records)->toHaveCount(1);
-        expect($records[0]['name'])->toBe('test_point');
-        expect($records[0]['memory'])->toBeInt();
-        expect($records[0]['memory_formatted'])->toBeString();
-        expect($records[0]['timestamp'])->toBeFloat();
-        expect($records[0]['relative_time'])->toBeFloat();
-        });
+        expect($records[0]->name)->toBe('test_point');
+        expect($records[0]->memory)->toBeInt();
+        expect($records[0]->formattedMemory())->toBeString();
+        expect($records[0]->timestamp)->toBeFloat();
+    });
 });
 

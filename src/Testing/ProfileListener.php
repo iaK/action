@@ -3,16 +3,18 @@
 namespace Iak\Action\Testing;
 
 use Iak\Action\Action;
-use Iak\Action\Testing\Results\Profile;
 use Illuminate\Support\Facades\Event;
+use Iak\Action\Testing\Results\Memory;
+use Iak\Action\Testing\Results\Profile;
 
 class ProfileListener implements Listener
 {
-    protected string $start;
-    protected string $end;
+    protected float $start;
+    protected float $end;
     protected int $startMemory;
     protected int $endMemory;
     protected int $peakMemory;
+    /** @var Memory[] */
     protected array $memoryRecords = [];
     protected ?Action $eventSource = null;
 
@@ -49,7 +51,7 @@ class ProfileListener implements Listener
         return $result;
     }
 
-    public function handle(...$arguments)
+    public function handle(mixed ...$arguments): mixed
     {
         return $this->listen(function () use ($arguments) {
             return $this->action->handle(...$arguments);
@@ -58,11 +60,11 @@ class ProfileListener implements Listener
 
     public function recordMemory(string $name): void
     {
-        $this->memoryRecords[] = [
-            'name' => $name,
-            'memory' => memory_get_usage(true),
-            'timestamp' => microtime(true)
-        ];
+        $this->memoryRecords[] = new Memory(
+            name: $name,
+            memory: memory_get_usage(true),
+            timestamp: microtime(true)
+        );
     }
 
     public function getProfile(): Profile
@@ -82,9 +84,13 @@ class ProfileListener implements Listener
         );
     }
 
-    public function __call($name, $arguments)
+    /**
+     * @param string $name
+     * @param array<mixed> $arguments
+     * @return mixed
+     */
+    public function __call(string $name, array $arguments): mixed
     {
-        return $this->action->$name(...$arguments);
+        return $this->action->{$name}(...$arguments);
     }
 }
-

@@ -19,16 +19,6 @@ describe('EmitsEvents Attribute', function () {
         expect(fn () => new EmitsEvents([]))
             ->toThrow(InvalidArgumentException::class, 'Events array cannot be empty');
     });
-
-    it('throws exception with non string events', function () {
-        expect(fn () => new EmitsEvents(['event1', 123, 'event3']))
-            ->toThrow(InvalidArgumentException::class, 'All events must be strings');
-    });
-
-    it('throws exception with mixed types', function () {
-        expect(fn () => new EmitsEvents(['event1', ['nested'], 'event3']))
-            ->toThrow(InvalidArgumentException::class, 'All events must be strings');
-    });
 });
 
 // HandlesEvents Trait Tests

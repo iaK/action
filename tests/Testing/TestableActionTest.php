@@ -2,11 +2,12 @@
 
 use Mockery\MockInterface;
 use Iak\Action\Testing\Testable;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Iak\Action\Testing\Results\Memory;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 describe('Testable', function () {
     it('can create testable action with callback', function () {
@@ -107,7 +108,8 @@ describe('Testable', function () {
                         expect($profiles)->toHaveCount(1);
                         expect($profiles[0]->class)->toBe(ClosureAction::class);
                         expect($profiles[0]->memoryRecords)->toHaveCount(1);
-                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
+                        expect($profiles[0]->memoryRecords[0])->toBeInstanceOf(Memory::class);
+                        expect($profiles[0]->memoryRecords[0]->name)->toBe('start');
                     })
                     ->queries(function ($queries) {
                         expect($queries)->toHaveCount(1);
@@ -125,7 +127,8 @@ describe('Testable', function () {
                         expect($profiles)->toHaveCount(1);
                         expect($profiles[0]->class)->toBe(ClosureAction::class);
                         expect($profiles[0]->memoryRecords)->toHaveCount(1);
-                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
+                        expect($profiles[0]->memoryRecords[0])->toBeInstanceOf(Memory::class);
+                        expect($profiles[0]->memoryRecords[0]->name)->toBe('start');
                     })
                     ->logs(function ($logs) {
                         expect($logs)->toHaveCount(1);
@@ -159,7 +162,8 @@ describe('Testable', function () {
                         expect($profiles)->toHaveCount(1);
                         expect($profiles[0]->class)->toBe(ClosureAction::class);
                         expect($profiles[0]->memoryRecords)->toHaveCount(1);
-                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
+                        expect($profiles[0]->memoryRecords[0])->toBeInstanceOf(Memory::class);
+                        expect($profiles[0]->memoryRecords[0]->name)->toBe('start');
                     })
                     ->queries(function ($queries) {
                         expect($queries)->toHaveCount(1);
@@ -184,7 +188,8 @@ describe('Testable', function () {
                         expect($profiles)->toHaveCount(1);
                         expect($profiles[0]->class)->toBe(ClosureAction::class);
                         expect($profiles[0]->memoryRecords)->toHaveCount(1);
-                        expect($profiles[0]->memoryRecords[0]['name'])->toBe('start');
+                        expect($profiles[0]->memoryRecords[0])->toBeInstanceOf(Memory::class);
+                        expect($profiles[0]->memoryRecords[0]->name)->toBe('start');
                     })
                     ->queries([ClosureAction::class], function ($queries) {
                         expect($queries)->toHaveCount(1);

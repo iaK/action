@@ -6,9 +6,10 @@ use Carbon\Carbon;
 
 class Entry
 {
-    public function __construct(
+       public function __construct(
         public string $level,
         public string $message,
+        /** @var array<mixed> */
         public array $context,
         public Carbon $timestamp,
         public string $channel = 'default',
