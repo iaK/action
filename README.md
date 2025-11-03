@@ -1,8 +1,11 @@
 # Laravel Action
 
-A simple way to organize your business logic in Laravel applications.
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/laravel-action)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/iak/action/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/iak/action/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/iak/action/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/iak/action/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/action)
 
-While you can install this, I would encourage you to simply copy the action file and take ownership of it. The logic is not complicated, and it will allow you to add/remove/update the features you like.
+A simple way to organize your business logic in Laravel applications.
 
 ## Installation
 
@@ -44,6 +47,10 @@ class HomeController extends Controller
     public function index(SayHelloAction $action)
     {
         $result = $action->handle();
+
+        // Or create it using the make() method
+
+        $result = SayHelloAction::make()->handle();
 
         return response()->json($result);
     }
@@ -238,7 +245,7 @@ $result = ProcessOrderAction::test()
 
 ### Testing Database Queries
 
-The `queries()` method allows you to record and inspect database queries executed during action execution:
+The `queries()` method allows you to record and inspect database queries executed during action execution. This can be really helpful when debugging performance issues, n+1 queries and more.
 
 ```php
 use App\Actions\ProcessOrderAction;
