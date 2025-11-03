@@ -1,8 +1,11 @@
 # Laravel Action
 
-A simple way to organize your business logic in Laravel applications.
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/laravel-action)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/iak/action/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/iak/action/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/iak/action/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/iak/action/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Total Downloads](https://img.shields.io/packagist/dt/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/action)
 
-While you can install this, I would encourage you to simply copy the action file and take ownership of it. The logic is not complicated, and it will allow you to add/remove/update the features you like.
+A simple way to organize your business logic in Laravel applications.
 
 ## Installation
 
@@ -44,6 +47,10 @@ class HomeController extends Controller
     public function index(SayHelloAction $action)
     {
         $result = $action->handle();
+
+        // Or create it using the make() method
+
+        $result = SayHelloAction::make()->handle();
 
         return response()->json($result);
     }
@@ -100,6 +107,68 @@ $action = SayHelloAction::make()
         Log::info("Hello said: {$result}");
     })
     ->handle();
+```
+
+### Forwarding Events
+
+When you have nested actions, you can use `forwardEvents()` to propagate events from child actions to parent classes that use the `HandlesEvents` trait, even if there are intermediate classes between them. This is particularly useful when services call actions and want to listen to events from those actions.
+
+```php
+<?php
+
+namespace App\Services;
+
+use Iak\Action\HandlesEvents;
+use Iak\Action\EmitsEvents;
+
+#[EmitsEvents(['email_sent', 'email_failed'])]
+class EmailService
+{
+    use HandlesEvents;
+
+    public function sendWelcomeEmail($user)
+    {
+        // Call the action with forwardEvents() to propagate events to this service
+        SendEmailAction::make()
+            ->forwardEvents(['email_sent'])
+            ->handle($user);
+    }
+}
+```
+
+```php
+<?php
+
+//...
+
+(new EmailService)
+    ->on('email_sent', function($user) {
+        Log::info('email sent', ['user_id' => $user->id]);
+    })
+    ->sendWelcomeEmail($user);
+```
+
+**How it works:**
+- When `forwardEvents()` is called on an action, events emitted by that action will bubble up through the call stack to the first class that uses the `HandlesEvents` trait
+- The parent class (service, action, etc.) must also declare the event in its `#[EmitsEvents(...)]` attribute to receive forwarded events
+- Events can propagate through multiple layers of intermediate classes, as long as the ancestor class uses the `HandlesEvents` trait
+
+**Forwarding specific events:**
+
+```php
+SendEmailAction::make()
+    ->forwardEvents(['email_sent', 'email_failed'])
+    ->handle($user);
+```
+
+**Forwarding all allowed events:**
+
+If you call `forwardEvents()` without arguments, all events declared in the action's `#[EmitsEvents(...)]` attribute will be forwarded:
+
+```php
+SendEmailAction::make()
+    ->forwardEvents()  // Forwards all events: ['email_sent', 'email_failed']
+    ->handle($user);
 ```
 
 ## Testing
@@ -238,7 +307,7 @@ $result = ProcessOrderAction::test()
 
 ### Testing Database Queries
 
-The `queries()` method allows you to record and inspect database queries executed during action execution:
+The `queries()` method allows you to record and inspect database queries executed during action execution. This can be really helpful when debugging performance issues, n+1 queries and more.
 
 ```php
 use App\Actions\ProcessOrderAction;
