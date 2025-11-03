@@ -109,6 +109,68 @@ $action = SayHelloAction::make()
     ->handle();
 ```
 
+### Forwarding Events
+
+When you have nested actions, you can use `forwardEvents()` to propagate events from child actions to parent classes that use the `HandlesEvents` trait, even if there are intermediate classes between them. This is particularly useful when services call actions and want to listen to events from those actions.
+
+```php
+<?php
+
+namespace App\Services;
+
+use Iak\Action\HandlesEvents;
+use Iak\Action\EmitsEvents;
+
+#[EmitsEvents(['email_sent', 'email_failed'])]
+class EmailService
+{
+    use HandlesEvents;
+
+    public function sendWelcomeEmail($user)
+    {
+        // Call the action with forwardEvents() to propagate events to this service
+        SendEmailAction::make()
+            ->forwardEvents(['email_sent'])
+            ->handle($user);
+    }
+}
+```
+
+```php
+<?php
+
+//...
+
+(new EmailService)
+    ->on('email_sent', function($user) {
+        Log::info('email sent', ['user_id' => $user->id]);
+    })
+    ->sendWelcomeEmail($user);
+```
+
+**How it works:**
+- When `forwardEvents()` is called on an action, events emitted by that action will bubble up through the call stack to the first class that uses the `HandlesEvents` trait
+- The parent class (service, action, etc.) must also declare the event in its `#[EmitsEvents(...)]` attribute to receive forwarded events
+- Events can propagate through multiple layers of intermediate classes, as long as the ancestor class uses the `HandlesEvents` trait
+
+**Forwarding specific events:**
+
+```php
+SendEmailAction::make()
+    ->forwardEvents(['email_sent', 'email_failed'])
+    ->handle($user);
+```
+
+**Forwarding all allowed events:**
+
+If you call `forwardEvents()` without arguments, all events declared in the action's `#[EmitsEvents(...)]` attribute will be forwarded:
+
+```php
+SendEmailAction::make()
+    ->forwardEvents()  // Forwards all events: ['email_sent', 'email_failed']
+    ->handle($user);
+```
+
 ## Testing
 
 ### Basic Testing
