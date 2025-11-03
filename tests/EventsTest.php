@@ -266,7 +266,7 @@ describe('Event Action Integration', function () {
     it('cleans up event listeners on destruction', function () {
         $action = ClosureAction::make();
         $eventReceived = false;
-        
+
         $action->on('test.event.a', function () use (&$eventReceived) {
             $eventReceived = true;
         });
@@ -283,7 +283,7 @@ describe('Event Action Integration', function () {
         // If cleanup worked, the listener from destroyed action shouldn't fire
         $newAction = ClosureAction::make();
         $newAction->event('test.event.a', 'test-again');
-        
+
         // The previous listener should be cleaned up, so eventReceived should remain false
         // Note: This is indirect testing - we can't directly verify cleanup without reflection
         // but we can verify behavior doesn't break
@@ -344,7 +344,7 @@ describe('Event Action Integration', function () {
 
     it('handles events in destructor correctly', function () {
         $cleanupExecuted = false;
-        
+
         $action = ClosureAction::make();
         $action->on('test.event.a', function () use (&$cleanupExecuted) {
             $cleanupExecuted = true;
@@ -356,7 +356,7 @@ describe('Event Action Integration', function () {
 
         // Destroy action - should clean up without errors
         unset($action);
-        
+
         // Test passes if no exception is thrown during cleanup
         expect(true)->toBeTrue();
     });

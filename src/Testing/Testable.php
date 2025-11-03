@@ -86,7 +86,6 @@ class Testable
      * All other actions execute normally.
      *
      * @param  string|object|array<class-string|object>  $classes
-     * @return static
      */
     public function except(string|object|array $classes): static
     {
@@ -105,7 +104,7 @@ class Testable
                 throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
             }
         });
-        
+
         $this->only = $classes;
 
         return $this;

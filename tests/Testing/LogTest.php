@@ -1,12 +1,12 @@
 <?php
 
 use Carbon\Carbon;
+use Iak\Action\Testing\Results\Entry;
+use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\LogAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
-use Iak\Action\Testing\Results\Entry;
-use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 describe('Log Feature', function () {
     it('can record logs for the calling action', function () {

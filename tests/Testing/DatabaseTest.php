@@ -1,9 +1,9 @@
 <?php
 
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 describe('Database Feature', function () {
     it('can record database calls for the calling action', function () {

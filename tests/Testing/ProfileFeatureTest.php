@@ -1,9 +1,9 @@
 <?php
 
-use Illuminate\Support\Collection;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Illuminate\Support\Collection;
 
 describe('Profile Feature', function () {
     it('can profile the duration of an action', function () {

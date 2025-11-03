@@ -1,14 +1,14 @@
 <?php
 
-use Mockery\MockInterface;
+use Iak\Action\Testing\Results\Memory;
 use Iak\Action\Testing\Testable;
+use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\LogAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Iak\Action\Testing\Results\Memory;
-use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Mockery\MockInterface;
 
 describe('Testable', function () {
     it('can create testable action with callback', function () {
@@ -176,7 +176,7 @@ describe('Testable', function () {
 
         it('handles exceptions in profile callbacks gracefully', function () {
             $exceptionThrown = false;
-            
+
             try {
                 ClosureAction::test()
                     ->profile(function (Collection $profiles) {
@@ -187,13 +187,13 @@ describe('Testable', function () {
                 $exceptionThrown = true;
                 expect($e->getMessage())->toBe('Test exception in callback');
             }
-            
+
             expect($exceptionThrown)->toBeTrue();
         });
 
         it('handles exceptions in query callbacks gracefully', function () {
             $exceptionThrown = false;
-            
+
             try {
                 ClosureAction::test()
                     ->queries(function ($queries) {
@@ -204,13 +204,13 @@ describe('Testable', function () {
                 $exceptionThrown = true;
                 expect($e->getMessage())->toBe('Test exception in callback');
             }
-            
+
             expect($exceptionThrown)->toBeTrue();
         });
 
         it('handles exceptions in log callbacks gracefully', function () {
             $exceptionThrown = false;
-            
+
             try {
                 ClosureAction::test()
                     ->logs(function ($logs) {
@@ -221,7 +221,7 @@ describe('Testable', function () {
                 $exceptionThrown = true;
                 expect($e->getMessage())->toBe('Test exception in callback');
             }
-            
+
             expect($exceptionThrown)->toBeTrue();
         });
     });

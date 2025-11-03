@@ -14,7 +14,7 @@ describe('QueryListener', function () {
         $listener = new QueryListener;
 
         expect($listener)->toBeInstanceOf(QueryListener::class);
-        
+
         // Verify initial state - no queries captured without listening
         expect($listener->getCallCount())->toBe(0);
     });
@@ -29,7 +29,7 @@ describe('QueryListener', function () {
         });
 
         expect($result)->toBe('test result');
-        
+
         // After listen call, queries should be captured but listener is disabled
         // Verified indirectly - query was captured during listening
         expect($listener->getCallCount())->toBe(1);

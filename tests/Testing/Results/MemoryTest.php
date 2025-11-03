@@ -112,4 +112,3 @@ describe('Memory', function () {
         expect($memory->formattedMemory('MB'))->toBe(512);
     });
 });
-

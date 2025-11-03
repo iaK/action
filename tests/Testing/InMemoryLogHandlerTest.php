@@ -4,8 +4,8 @@ use Carbon\Carbon;
 use Iak\Action\Testing\InMemoryLogHandler;
 use Iak\Action\Testing\LogListener;
 use Illuminate\Support\Facades\Log;
-use Monolog\LogRecord;
 use Monolog\Level;
+use Monolog\LogRecord;
 
 describe('InMemoryLogHandler', function () {
     it('can create handler', function () {
@@ -272,4 +272,3 @@ describe('InMemoryLogHandler', function () {
         expect($logs[3]->channel)->toBe('api');
     });
 });
-

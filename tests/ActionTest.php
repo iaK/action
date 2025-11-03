@@ -37,10 +37,10 @@ describe('Action', function () {
         Event::fake();
 
         $action = ClosureAction::make();
-        
+
         // Record memory should dispatch an event
         $action->recordMemory('test-point');
-        
+
         $eventName = 'action.record_memory.'.spl_object_hash($action);
         Event::assertDispatched($eventName, function ($event, $data) {
             return $data[0] === 'test-point';
@@ -66,7 +66,7 @@ describe('Action', function () {
 
     it('handles action bound with alias correctly', function () {
         app()->bind('custom.action', ClosureAction::class);
-        
+
         $fake = ClosureAction::fake('custom.action');
         expect($fake)->toBeInstanceOf(MockInterface::class);
         expect(app('custom.action'))->toBe($fake);
