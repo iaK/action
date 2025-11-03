@@ -89,12 +89,4 @@ class ProfileListener implements Listener
             $this->memoryRecords
         );
     }
-
-    /**
-     * @param  array<mixed>  $arguments
-     */
-    public function __call(string $name, array $arguments): mixed
-    {
-        return $this->action->{$name}(...$arguments);
-    }
 }

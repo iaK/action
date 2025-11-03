@@ -60,27 +60,37 @@ class Testable
         collect($classes)->each(function ($class, $key) {
             [$class, $returnValue] = $this->getClassAndReturnValue($class, $key);
 
-            if (! class_exists($class) && ! app()->bound($class)) {
-                throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
-            }
-
-            if (is_string($class)) {
-                $mock = $class::fake()->shouldReceive('handle');
-                if ($returnValue) {
-                    $mock->andReturn($returnValue);
-                }
-
-                return $mock;
-            }
-
             if ($class instanceof MockInterface || $class instanceof LegacyMockInterface) {
                 return $class;
             }
 
-            throw new \InvalidArgumentException('Invalid class passed to without');
+            if (! class_exists($class) && ! app()->bound($class)) {
+                throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
+            }
+
+            $mock = $class::fake()->shouldReceive('handle');
+            if ($returnValue) {
+                $mock->andReturn($returnValue);
+            }
+
+            return $mock;
         });
 
         return $this;
+    }
+
+    /**
+     * Alias for {@see without()}.
+     *
+     * Mocks specific actions, preventing them from executing their real `handle()` method.
+     * All other actions execute normally.
+     *
+     * @param  string|object|array<class-string|object>  $classes
+     * @return static
+     */
+    public function except(string|object|array $classes): static
+    {
+        return $this->without($classes);
     }
 
     /**
@@ -305,10 +315,6 @@ class Testable
     protected function interceptProfiles(): void
     {
         foreach ($this->actionsToBeProfiled as $actionToBeProfiled) {
-            if (! class_exists($actionToBeProfiled)) {
-                throw new \InvalidArgumentException("Invalid profile class: $actionToBeProfiled");
-            }
-
             $this->bindProxyWrapper($actionToBeProfiled, function ($action) use ($actionToBeProfiled) {
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToBeProfiled);
@@ -330,10 +336,6 @@ class Testable
         }
 
         foreach ($this->actionsToRecordDbCalls as $actionToRecordDbCalls) {
-            if (! class_exists($actionToRecordDbCalls)) {
-                throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
-            }
-
             $this->bindProxyWrapper($actionToRecordDbCalls, function ($action) use ($actionToRecordDbCalls) {
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToRecordDbCalls);
@@ -355,10 +357,6 @@ class Testable
         }
 
         foreach ($this->actionsToRecordLogs as $actionToRecordLogs) {
-            if (! class_exists($actionToRecordLogs)) {
-                throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecordLogs");
-            }
-
             $this->bindProxyWrapper($actionToRecordLogs, function ($action) use ($actionToRecordLogs) {
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToRecordLogs);

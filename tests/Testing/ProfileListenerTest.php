@@ -4,6 +4,7 @@ use Iak\Action\Testing\ProfileListener;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\LogAction;
+use Illuminate\Support\Facades\Event;
 
 describe('ProfileListener', function () {
     it('can be instantiated with an action', function () {
@@ -217,5 +218,27 @@ describe('ProfileListener', function () {
         expect($records[0]->memory)->toBeInt();
         expect($records[0]->formattedMemory())->toBeString();
         expect($records[0]->timestamp)->toBeFloat();
+    });
+
+    it('listens to proxy event source when different from action', function () {
+        $action = new ClosureAction;
+        $proxy = new ClosureAction; // Different instance (proxy)
+
+        $profiler = new ProfileListener($action, $proxy);
+
+        // Record memory on the proxy - this should trigger the proxy event listener
+        $proxyEvent = 'action.record_memory.'.spl_object_hash($proxy);
+        Event::dispatch($proxyEvent, ['proxy_memory_point']);
+
+        // Execute the profiler to get a profile
+        $profiler->listen(function () {
+            return 'result';
+        });
+
+        $profile = $profiler->getProfile();
+
+        // Should have recorded the memory from the proxy event
+        expect($profile->memoryRecords)->toHaveCount(1);
+        expect($profile->memoryRecords[0]->name)->toBe('proxy_memory_point');
     });
 });

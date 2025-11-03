@@ -95,8 +95,77 @@ describe('Testable', function () {
             expect(ClosureAction::make())->toBeInstanceOf(ClosureAction::class);
         });
 
+        it('can use without method with MockInterface object', function () {
+            $mock = Mockery::mock(OtherClosureAction::class);
+
+            // The without method should accept MockInterface objects without throwing
+            $testable = ClosureAction::test()->without($mock);
+
+            expect($testable)->toBeInstanceOf(Testable::class);
+        });
+
         it('throws exception when without method receives invalid parameter', function () {
             expect(fn () => ClosureAction::test()->without(123))
+                ->toThrow(Exception::class);
+        });
+
+        it('can use except method with string class', function () {
+            ClosureAction::test()
+                ->except(OtherClosureAction::class)
+                ->handle();
+
+            expect(OtherClosureAction::make())->toBeInstanceOf(MockInterface::class);
+        });
+
+        it('can use except method with array of classes', function () {
+            ClosureAction::test()
+                ->except([OtherClosureAction::class, ClosureAction::class])
+                ->handle(function () {
+                    OtherClosureAction::make()->handle();
+                    ClosureAction::make()->handle();
+                });
+
+            // Both classes should be mocked when resolved
+            expect(OtherClosureAction::make())->toBeInstanceOf(MockInterface::class);
+            expect(ClosureAction::make())->toBeInstanceOf(MockInterface::class);
+        });
+
+        it('can use except method and specify return value', function () {
+            $result = ClosureAction::test()
+                ->except([OtherClosureAction::class => 'Mocked hello, World!'])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe('Mocked hello, World!');
+        });
+
+        it('can use except method and specify return value for several actions', function () {
+            $result = ClosureAction::test()
+                ->except([
+                    // Not nested
+                    ClosureAction::class => 'Mocked hello, World!',
+                    // Nested
+                    [OtherClosureAction::class => 'Mocked again!'],
+                ])
+                ->handle(function () {
+                    return ClosureAction::make()->handle().' '.OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe('Mocked hello, World! Mocked again!');
+        });
+
+        it('can use except method with MockInterface object', function () {
+            $mock = Mockery::mock(OtherClosureAction::class);
+
+            // The except method should accept MockInterface objects without throwing
+            $testable = ClosureAction::test()->except($mock);
+
+            expect($testable)->toBeInstanceOf(Testable::class);
+        });
+
+        it('throws exception when except method receives invalid parameter', function () {
+            expect(fn () => ClosureAction::test()->except(123))
                 ->toThrow(Exception::class);
         });
 
