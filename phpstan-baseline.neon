@@ -1,0 +1,6 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Trait Iak\\Action\\Testing\\Traits\\ProxyTrait is used zero times and is not analysed.$#'
+			identifier: trait.unused
+			path: src/Testing/Traits/ProxyTrait.php  

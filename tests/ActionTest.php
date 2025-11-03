@@ -1,68 +1,74 @@
 <?php
 
-use Iak\Action\Tests\TestAction;
+use Iak\Action\Tests\TestClasses\ClosureAction;
+use Illuminate\Support\Facades\Event;
 use Mockery\MockInterface;
 
-it('can be instantiated', function () {
-    $action = TestAction::make();
+describe('Action', function () {
+    it('can be instantiated', function () {
+        $action = ClosureAction::make();
 
-    expect($action)->toBeInstanceOf(TestAction::class);
-    expect($action->handle())->toBe('Hello, World!');
-});
-
-it('can be faked', function () {
-    $action = TestAction::fake();
-
-    expect($action)->toBeInstanceOf(MockInterface::class);
-});
-
-it('can emit events', function () {
-    $eventsCalled = [];
-    TestAction::make()
-        ->on('test.event.a', function ($data) use (&$eventsCalled) {
-            $eventsCalled[] = 'test.event.a';
-            expect($data)->toBe('Hello, World!');
-        })
-        ->on('test.event.b', function ($data) use (&$eventsCalled) {
-            $eventsCalled[] = 'test.event.b';
-            expect($data)->toBe(['Hello', 'World']);
-        })
-        ->handle();
-
-    expect($eventsCalled)->toBe(['test.event.a', 'test.event.b']);
-});
-
-it('throws an exception if an event is not allowed', function () {
-    $action = new TestAction(true);
-
-    expect(fn () => $action->handle())
-        ->toThrow(InvalidArgumentException::class, "Cannot emit event 'test.event.c'. Did you mean: 'test.event.a'?");
-});
-
-it('throws an exception if listening to an event that is not allowed', function () {
-    $action = TestAction::make();
-
-    expect(fn () => $action->on('test.event.c', function () {}))
-        ->toThrow(InvalidArgumentException::class, "Cannot listen for event 'test.event.c'. Did you mean: 'test.event.a'?");
-});
-
-it('isolates events for each action instance', function () {
-    $actionA = TestAction::make();
-    $actionB = TestAction::make();
-
-    $eventsCalledForA = [];
-    $eventsCalledForB = [];
-
-    $actionA->on('test.event.a', function () use (&$eventsCalledForA) {
-        $eventsCalledForA[] = 'test.event.a';
-    });
-    $actionB->on('test.event.a', function () use (&$eventsCalledForB) {
-        $eventsCalledForB[] = 'test.event.a';
+        expect($action)->toBeInstanceOf(ClosureAction::class);
     });
 
-    $actionA->handle();
-    $actionB->handle();
+    it('can be faked', function () {
+        $action = ClosureAction::fake();
 
-    expect($eventsCalledForA)->toBe(['test.event.a']);
-    expect($eventsCalledForB)->toBe(['test.event.a']);
+        expect($action)->toBeInstanceOf(MockInterface::class);
+    });
+
+    it('can create fake action with custom alias', function () {
+        $fake = ClosureAction::fake('custom.test.action');
+
+        expect($fake)->toBeInstanceOf(MockInterface::class);
+        expect(app('custom.test.action'))->toBe($fake);
+    });
+
+    it('resolves action from container', function () {
+        $action1 = ClosureAction::make();
+        $action2 = ClosureAction::make();
+
+        // Both should be instances but may be different objects
+        expect($action1)->toBeInstanceOf(ClosureAction::class);
+        expect($action2)->toBeInstanceOf(ClosureAction::class);
+    });
+
+    it('can record memory at specific points', function () {
+        Event::fake();
+
+        $action = ClosureAction::make();
+
+        // Record memory should dispatch an event
+        $action->recordMemory('test-point');
+
+        $eventName = 'action.record_memory.'.spl_object_hash($action);
+        Event::assertDispatched($eventName, function ($event, $data) {
+            return $data[0] === 'test-point';
+        });
+    });
+
+    it('creates testable instance', function () {
+        $testable = ClosureAction::test();
+
+        expect($testable)->toBeInstanceOf(\Iak\Action\Testing\Testable::class);
+    });
+
+    it('creates testable instance with callback', function () {
+        $callbackExecuted = false;
+        $testable = ClosureAction::test(function ($testable) use (&$callbackExecuted) {
+            $callbackExecuted = true;
+            expect($testable)->toBeInstanceOf(\Iak\Action\Testing\Testable::class);
+        });
+
+        expect($callbackExecuted)->toBeTrue();
+        expect($testable)->toBeInstanceOf(\Iak\Action\Testing\Testable::class);
+    });
+
+    it('handles action bound with alias correctly', function () {
+        app()->bind('custom.action', ClosureAction::class);
+
+        $fake = ClosureAction::fake('custom.action');
+        expect($fake)->toBeInstanceOf(MockInterface::class);
+        expect(app('custom.action'))->toBe($fake);
+    });
 });

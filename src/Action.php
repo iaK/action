@@ -2,16 +2,30 @@
 
 namespace Iak\Action;
 
+use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Str;
-use InvalidArgumentException;
 use Mockery;
 use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
-use ReflectionClass;
 
+/**
+ * @method mixed handle(...$args) Execute the action with the given arguments. This method must be implemented by concrete action classes.
+ */
 abstract class Action
 {
+    use HandlesEvents;
+
+    /**
+     * Record memory usage at a specific point in the action
+     */
+    public function recordMemory(string $name): void
+    {
+        // Dispatch an instance-scoped Laravel event so any profiler
+        // attached to this specific instance can record the memory point.
+        $eventName = 'action.record_memory.'.spl_object_hash($this);
+        Event::dispatch($eventName, [$name]);
+    }
+
     /**
      * Create a new instance of the action
      */
@@ -33,83 +47,17 @@ abstract class Action
     }
 
     /**
-     * Listen for an event emitted by this action
+     * Create a testable instance of the action
      */
-    public function on(string $event, callable $callback): static
+    public static function test(?callable $callback = null): Testable
     {
-        $this->throwIfEventNotAllowed($event, "Cannot listen for event '{$event}'.");
+        $action = static::make();
+        $testable = new Testable($action);
 
-        Event::listen($this->generateEventName($event), $callback);
-
-        return $this;
-    }
-
-    /**
-     * Emit an event from this action
-     */
-    public function event(string $event, $data): static
-    {
-        $this->throwIfEventNotAllowed($event, "Cannot emit event '{$event}'.");
-
-        event($this->generateEventName($event), [$data]);
-
-        return $this;
-    }
-
-    /**
-     * Get all allowed events for this action
-     */
-    private function getAllowedEvents(): array
-    {
-        $reflection = new ReflectionClass(static::class);
-        $attributes = $reflection->getAttributes(EmitsEvents::class);
-
-        if (empty($attributes)) {
-            return [];
+        if (isset($callback)) {
+            $callback($testable);
         }
 
-        $emitsEventsAttribute = $attributes[0]->newInstance();
-
-        return $emitsEventsAttribute->events;
-    }
-
-    /**
-     * Validate that an event is allowed for this action
-     */
-    private function throwIfEventNotAllowed(string $event, string $description): void
-    {
-        $allowedEvents = $this->getAllowedEvents();
-
-        if (in_array($event, $allowedEvents)) {
-            return;
-        }
-
-        $closest = collect($allowedEvents)
-            ->map(fn ($allowedEvent) => [
-                'option' => $allowedEvent,
-                'distance' => levenshtein($event, $allowedEvent),
-            ])
-            ->sortBy('distance')
-            ->filter(fn ($event) => $event['distance'] <= 3)
-            ->map(fn ($event) => $event['option'])
-            ->first();
-
-        $message = Str::of($description)
-            ->when($closest, fn ($str) => $str->append(" Did you mean: '{$closest}'?"))
-            ->when(! $closest, fn ($str) => $str->append(' Allowed events: '.implode(', ', $allowedEvents).'.'));
-
-        throw new InvalidArgumentException($message->toString());
-    }
-
-    private function generateEventName(string $event): string
-    {
-        return static::class.'.'.spl_object_hash($this).'.'.$event;
-    }
-
-    public function __destruct()
-    {
-        foreach ($this->getAllowedEvents() as $event) {
-            Event::forget($this->generateEventName($event));
-        }
+        return $testable;
     }
 }
