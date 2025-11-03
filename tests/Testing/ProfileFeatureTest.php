@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Collection;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
@@ -7,7 +8,7 @@ use Iak\Action\Tests\TestClasses\OtherClosureAction;
 describe('Profile Feature', function () {
     it('can profile the duration of an action', function () {
         $result = ClosureAction::test()
-            ->profile(function (array $profiles) {
+            ->profile(function (Collection $profiles) {
                 expect($profiles)->toHaveCount(1);
                 expect($profiles[0]->class)->toBe(ClosureAction::class);
                 expect($profiles[0]->start)->toBeLessThan($profiles[0]->end);
@@ -25,7 +26,7 @@ describe('Profile Feature', function () {
 
     it('can profile the duration of an action with a specific action', function ($actions) {
         $result = ClosureAction::test()
-            ->profile($actions, function (array $profiles) {
+            ->profile($actions, function (Collection $profiles) {
                 expect($profiles)->toHaveCount(1);
                 expect($profiles[0])->toBeInstanceOf(Profile::class);
                 expect($profiles[0]->class)->toBe(ClosureAction::class);
@@ -44,7 +45,7 @@ describe('Profile Feature', function () {
 
     it('can profile several actions', function () {
         ClosureAction::test()
-            ->profile([ClosureAction::class, OtherClosureAction::class], function (array $profiles) {
+            ->profile([ClosureAction::class, OtherClosureAction::class], function (Collection $profiles) {
                 expect($profiles)->toHaveCount(2);
                 expect($profiles[0]->class)->toBe(ClosureAction::class); // Executed first
                 expect($profiles[1]->class)->toBe(OtherClosureAction::class);   // Executed second
@@ -57,7 +58,7 @@ describe('Profile Feature', function () {
 
     it('can convert profile to string', function () {
         ClosureAction::test()
-            ->profile(function (array $profiles) {
+            ->profile(function (Collection $profiles) {
                 $profile = $profiles[0];
                 expect((string) $profile)->toBe("{$profile->class} took {$profile->duration()->totalMilliseconds}ms (memory: {$profile->memoryUsed()}, peak: {$profile->peakMemory()})");
             })
@@ -66,7 +67,7 @@ describe('Profile Feature', function () {
 
     it('can profile memory usage of an action', function () {
         $result = ClosureAction::test()
-            ->profile(function (array $profiles) {
+            ->profile(function (Collection $profiles) {
                 expect($profiles)->toHaveCount(1);
                 $profile = $profiles[0];
                 expect($profile->class)->toBe(ClosureAction::class);
@@ -88,7 +89,7 @@ describe('Profile Feature', function () {
 
     it('can profile memory usage of multiple actions', function () {
         ClosureAction::test()
-            ->profile([ClosureAction::class, OtherClosureAction::class], function (array $profiles) {
+            ->profile([ClosureAction::class, OtherClosureAction::class], function (Collection $profiles) {
                 expect($profiles)->toHaveCount(2);
 
                 expect($profiles[0]->class)->toBe(ClosureAction::class);
@@ -102,7 +103,7 @@ describe('Profile Feature', function () {
 
     it('includes memory info in profile string representation when memory is used', function () {
         ClosureAction::test()
-            ->profile(function (array $profiles) {
+            ->profile(function (Collection $profiles) {
                 $profile = $profiles[0];
                 $string = (string) $profile;
                 expect($string)->toContain('took');
@@ -124,7 +125,7 @@ describe('Profile Feature', function () {
 
     it('can access memory records through profile', function () {
         ClosureAction::test()
-            ->profile(function (array $profiles) {
+            ->profile(function (Collection $profiles) {
                 expect($profiles)->toHaveCount(1);
                 expect($profiles[0]->records()[0]->name)->toBe('start');
                 expect($profiles[0]->records()[1]->name)->toBe('end');
@@ -137,7 +138,7 @@ describe('Profile Feature', function () {
 
     it('can access memory records through profile on the provided action', function () {
         $result = ClosureAction::test()
-            ->profile(ClosureAction::class, function (array $profiles) {
+            ->profile(ClosureAction::class, function (Collection $profiles) {
                 expect($profiles)->toHaveCount(1);
                 $profile = $profiles[0];
                 $records = $profile->records();

@@ -1,16 +1,17 @@
 <?php
 
 use Carbon\Carbon;
-use Iak\Action\Testing\Results\Entry;
-use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Iak\Action\Testing\Results\Entry;
+use Iak\Action\Tests\TestClasses\LogAction;
+use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 describe('Log Feature', function () {
     it('can record logs for the calling action', function () {
         $result = ClosureAction::test()
-            ->logs(function (array $logs) {
+            ->logs(function (Collection $logs) {
                 expect($logs)->toHaveCount(4);
 
                 expect($logs)->each->toBeInstanceOf(Entry::class);
@@ -45,7 +46,7 @@ describe('Log Feature', function () {
 
     it('can record logs for a single action', function () {
         $result = ClosureAction::test()
-            ->logs(ClosureAction::class, function (array $logs) {
+            ->logs(ClosureAction::class, function (Collection $logs) {
                 expect($logs)->toHaveCount(2);
 
                 expect($logs[0])->toBeInstanceOf(Entry::class);
@@ -72,7 +73,7 @@ describe('Log Feature', function () {
 
     it('can convert log entry to string', function () {
         ClosureAction::test()
-            ->logs(function (array $logs) {
+            ->logs(function (Collection $logs) {
                 $logEntry = $logs[0];
                 $string = (string) $logEntry;
 
@@ -86,7 +87,7 @@ describe('Log Feature', function () {
 
     it('can record logs with different channels', function () {
         $result = ClosureAction::test()
-            ->logs(function (array $logs) {
+            ->logs(function (Collection $logs) {
                 expect($logs)->toHaveCount(2);
 
                 // All logs should have the same channel (testing in test environment)
@@ -106,7 +107,7 @@ describe('Log Feature', function () {
 
     it('can record logs with timestamps', function () {
         ClosureAction::test()
-            ->logs(function (array $logs) {
+            ->logs(function (Collection $logs) {
                 expect($logs[0]->timestamp)->toBeInstanceOf(Carbon::class);
             })
             ->handle(function () {
@@ -128,7 +129,7 @@ describe('Log Feature', function () {
 
     it('can record logs for multiple actions', function () {
         ClosureAction::test()
-            ->logs([LogAction::class, ClosureAction::class], function (array $logs) {
+            ->logs([LogAction::class, ClosureAction::class], function (Collection $logs) {
                 expect($logs)->toHaveCount(2);
                 expect($logs[0]->level)->toBe('INFO');
                 expect($logs[0]->message)->toBe('First log');
@@ -147,7 +148,7 @@ describe('Log Feature', function () {
 
     it('tracks which action invoked the log', function () {
         ClosureAction::test()
-            ->logs(function ($logs) {
+            ->logs(function (Collection $logs) {
                 expect($logs)->toHaveCount(1);
                 expect($logs[0]->action)->toBe(ClosureAction::class);
             })
@@ -160,7 +161,7 @@ describe('Log Feature', function () {
 
     it('tracks nested actions when one action calls another', function () {
         $result = ClosureAction::test()
-            ->logs(OtherClosureAction::class, function ($logs) {
+            ->logs(OtherClosureAction::class, function (Collection $logs) {
                 expect($logs)->toHaveCount(1);
                 expect($logs[0]->action)->toBe(OtherClosureAction::class);
             })

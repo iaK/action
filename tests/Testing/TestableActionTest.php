@@ -1,13 +1,14 @@
 <?php
 
-use Iak\Action\Testing\Results\Memory;
+use Mockery\MockInterface;
 use Iak\Action\Testing\Testable;
-use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Mockery\MockInterface;
+use Iak\Action\Testing\Results\Memory;
+use Iak\Action\Tests\TestClasses\LogAction;
+use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 
 describe('Testable', function () {
     it('can create testable action with callback', function () {
@@ -31,7 +32,7 @@ describe('Testable', function () {
                 });
 
             expect(OtherClosureAction::make())
-                ->tobeinstanceof(MockInterface::class);
+                ->toBeInstanceOf(MockInterface::class);
         });
 
         it('can use without method with string class', function () {
@@ -97,6 +98,62 @@ describe('Testable', function () {
         it('throws exception when without method receives invalid parameter', function () {
             expect(fn () => ClosureAction::test()->without(123))
                 ->toThrow(Exception::class);
+        });
+
+        it('throws exception when only method receives invalid class', function () {
+            expect(fn () => ClosureAction::test()->only('NonExistentClass'))
+                ->toThrow(Exception::class);
+        });
+
+        it('handles exceptions in profile callbacks gracefully', function () {
+            $exceptionThrown = false;
+            
+            try {
+                ClosureAction::test()
+                    ->profile(function (Collection $profiles) {
+                        throw new \Exception('Test exception in callback');
+                    })
+                    ->handle();
+            } catch (\Exception $e) {
+                $exceptionThrown = true;
+                expect($e->getMessage())->toBe('Test exception in callback');
+            }
+            
+            expect($exceptionThrown)->toBeTrue();
+        });
+
+        it('handles exceptions in query callbacks gracefully', function () {
+            $exceptionThrown = false;
+            
+            try {
+                ClosureAction::test()
+                    ->queries(function ($queries) {
+                        throw new \Exception('Test exception in callback');
+                    })
+                    ->handle();
+            } catch (\Exception $e) {
+                $exceptionThrown = true;
+                expect($e->getMessage())->toBe('Test exception in callback');
+            }
+            
+            expect($exceptionThrown)->toBeTrue();
+        });
+
+        it('handles exceptions in log callbacks gracefully', function () {
+            $exceptionThrown = false;
+            
+            try {
+                ClosureAction::test()
+                    ->logs(function ($logs) {
+                        throw new \Exception('Test exception in callback');
+                    })
+                    ->handle();
+            } catch (\Exception $e) {
+                $exceptionThrown = true;
+                expect($e->getMessage())->toBe('Test exception in callback');
+            }
+            
+            expect($exceptionThrown)->toBeTrue();
         });
     });
 

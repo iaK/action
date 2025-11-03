@@ -13,7 +13,7 @@ class QueryListener implements Listener
     /** @var Query[] */
     protected array $queries = [];
 
-    protected \callable $listener;
+    protected \Closure $listener;
 
     protected ?string $action;
 

@@ -1,17 +1,18 @@
 <?php
 
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
-use Illuminate\Support\Facades\DB;
 
 describe('Database Feature', function () {
     it('can record database calls for the calling action', function () {
         $result = ClosureAction::test()
-            ->queries(function (array $dbCalls) {
-                expect($dbCalls)->toHaveCount(2);
+            ->queries(function (Collection $queries) {
+                expect($queries)->toHaveCount(2);
 
-                expect($dbCalls[0]->query)->toBe('SELECT 1');
-                expect($dbCalls[1]->query)->toBe('SELECT 2');
+                expect($queries[0]->query)->toBe('SELECT 1');
+                expect($queries[1]->query)->toBe('SELECT 2');
             })
             ->handle(function () {
                 DB::statement('SELECT 1');
@@ -25,9 +26,9 @@ describe('Database Feature', function () {
 
     it('can record database calls for a single action', function () {
         $result = ClosureAction::test()
-            ->queries(ClosureAction::class, function (array $dbCalls) {
-                expect($dbCalls)->toHaveCount(1);
-                expect($dbCalls[0]->query)->toBe('SELECT 1');
+            ->queries(ClosureAction::class, function (Collection $queries) {
+                expect($queries)->toHaveCount(1);
+                expect($queries[0]->query)->toBe('SELECT 1');
             })
             ->handle(function () {
                 OtherClosureAction::make()->handle(function () {
@@ -45,7 +46,7 @@ describe('Database Feature', function () {
 
     it('can record database calls for a specific action', function ($actions) {
         $result = ClosureAction::test()
-            ->queries($actions, function ($queries) {
+            ->queries($actions, function (Collection $queries) {
                 expect($queries)->toHaveCount(1);
                 expect($queries[0]->query)->toBe('SELECT 1');
             })
@@ -65,7 +66,7 @@ describe('Database Feature', function () {
 
     it('can convert database call to string', function () {
         ClosureAction::test()
-            ->queries(function ($queries) {
+            ->queries(function (Collection $queries) {
                 expect((string) $queries[0])
                     ->toMatch('/Query: SELECT 1 | Bindings: \[\] | Time: \d+\.\d+ms | Action: '.preg_quote(ClosureAction::class, '/').'/');
             })
@@ -76,7 +77,7 @@ describe('Database Feature', function () {
 
     it('tracks which action invoked the database query', function () {
         ClosureAction::test()
-            ->queries(function ($queries) {
+            ->queries(function (Collection $queries) {
                 expect($queries)->toHaveCount(1);
                 expect($queries[0]->action)->toBe(ClosureAction::class);
             })
@@ -89,7 +90,7 @@ describe('Database Feature', function () {
 
     it('tracks nested actions when one action calls another', function () {
         $result = ClosureAction::test()
-            ->queries(OtherClosureAction::class, function ($queries) {
+            ->queries(OtherClosureAction::class, function (Collection $queries) {
                 expect($queries)->toHaveCount(1);
                 expect($queries[0]->action)->toBe(OtherClosureAction::class);
             })

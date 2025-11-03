@@ -90,6 +90,12 @@ class Testable
     {
         $classes = is_array($classes) ? $classes : [$classes];
 
+        collect($classes)->each(function ($class, $key) {
+            if (! class_exists($class) && ! app()->bound($class)) {
+                throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
+            }
+        });
+        
         $this->only = $classes;
 
         return $this;
@@ -191,94 +197,80 @@ class Testable
         $this->interceptDatabaseCalls();
         $this->interceptLogs();
 
-        // Pass through pipeline pipes for instrumentation layers
-        $pipes = $this->buildPipelinePipes();
-
         $execute = app(Pipeline::class)
             ->send(function () use ($args) {
                 return $this->action->handle(...$args);
             })
-            ->through($pipes->toArray())
+            ->through(collect()
+                ->when($this->recordMainActionLogs, function (Collection $pipes) {
+                    return $pipes->push(function (\Closure $execute, \Closure $next) {
+                        // Call next to get the closure wrapped by subsequent pipes
+                        $wrapped = $next($execute);
+
+                        // Wrap it with log instrumentation (outermost)
+                        return function () use ($wrapped) {
+                            $listener = new LogListener($this->action::class);
+                            $result = $listener->listen(function () use ($wrapped) {
+                                return $wrapped();
+                            });
+                            $this->addLogs($listener->getLogs());
+
+                            return $result;
+                        };
+                    });
+                })
+                ->when($this->recordMainActionDbCalls, function ($pipes) {
+                    return $pipes->push(function (\Closure $execute, \Closure $next) {
+                        // Call next to get the closure wrapped by subsequent pipes
+                        $wrapped = $next($execute);
+
+                        // Wrap it with database query instrumentation (middle)
+                        return function () use ($wrapped) {
+                            $listener = new QueryListener($this->action::class);
+                            $result = $listener->listen(function () use ($wrapped) {
+                                return $wrapped();
+                            });
+                            $this->addQueries($listener->getQueries());
+
+                            return $result;
+                        };
+                    });
+                })
+                ->when($this->profileMainAction, function ($pipes) {
+                    return $pipes->push(function (\Closure $execute, \Closure $next) {
+                        // Call next to get the closure wrapped by subsequent pipes
+                        $wrapped = $next($execute);
+
+                        // Wrap it with profile instrumentation (innermost - wraps base)
+                        return function () use ($wrapped) {
+                            $listener = new ProfileListener($this->action, $this->action);
+                            $result = $listener->listen(function () use ($wrapped) {
+                                return $wrapped();
+                            });
+                            $this->addProfile($listener->getProfile());
+
+                            return $result;
+                        };
+                    });
+                })->toArray()
+            )
             ->thenReturn();
 
         $result = $execute();
 
         if (isset($this->profilesCallback)) {
-            ($this->profilesCallback)($this->profiledActions);
+            ($this->profilesCallback)(collect($this->profiledActions));
         }
 
         if (isset($this->dbCallsCallback)) {
-            ($this->dbCallsCallback)($this->recordedDbCalls);
+            ($this->dbCallsCallback)(collect($this->recordedDbCalls));
         }
 
         if (isset($this->logsCallback)) {
-            ($this->logsCallback)($this->recordedLogs);
+            ($this->logsCallback)(collect($this->recordedLogs));
         }
 
         return $result;
-    }
-
-    /**
-     * Build the array of pipeline pipes to apply based on enabled features.
-     * Pipes are applied in order: first pipe becomes outermost wrapper.
-     * This creates: Logs -> DB -> Profile -> Base execution
-     *
-     * @return Collection<int, \Closure>
-     */
-    protected function buildPipelinePipes(): Collection
-    {
-        return collect()
-            ->when($this->recordMainActionLogs, function ($pipes) {
-                return $pipes->push(function (\Closure $execute, \Closure $next) {
-                    // Call next to get the closure wrapped by subsequent pipes
-                    $wrapped = $next($execute);
-
-                    // Wrap it with log instrumentation (outermost)
-                    return function () use ($wrapped) {
-                        $listener = new LogListener($this->action::class);
-                        $result = $listener->listen(function () use ($wrapped) {
-                            return $wrapped();
-                        });
-                        $this->addLogs($listener->getLogs());
-
-                        return $result;
-                    };
-                });
-            })
-            ->when($this->recordMainActionDbCalls, function ($pipes) {
-                return $pipes->push(function (\Closure $execute, \Closure $next) {
-                    // Call next to get the closure wrapped by subsequent pipes
-                    $wrapped = $next($execute);
-
-                    // Wrap it with database query instrumentation (middle)
-                    return function () use ($wrapped) {
-                        $listener = new QueryListener($this->action::class);
-                        $result = $listener->listen(function () use ($wrapped) {
-                            return $wrapped();
-                        });
-                        $this->addQueries($listener->getQueries());
-
-                        return $result;
-                    };
-                });
-            })
-            ->when($this->profileMainAction, function ($pipes) {
-                return $pipes->push(function (\Closure $execute, \Closure $next) {
-                    // Call next to get the closure wrapped by subsequent pipes
-                    $wrapped = $next($execute);
-
-                    // Wrap it with profile instrumentation (innermost - wraps base)
-                    return function () use ($wrapped) {
-                        $listener = new ProfileListener($this->action, $this->action);
-                        $result = $listener->listen(function () use ($wrapped) {
-                            return $wrapped();
-                        });
-                        $this->addProfile($listener->getProfile());
-
-                        return $result;
-                    };
-                });
-            });
     }
 
     /**

@@ -14,12 +14,9 @@ describe('QueryListener', function () {
         $listener = new QueryListener;
 
         expect($listener)->toBeInstanceOf(QueryListener::class);
-
-        // Use reflection to access the protected property
-        $reflection = new ReflectionClass($listener);
-        $property = $reflection->getProperty('enabled');
-        $property->setAccessible(true);
-        expect($property->getValue($listener))->toBeFalse();
+        
+        // Verify initial state - no queries captured without listening
+        expect($listener->getCallCount())->toBe(0);
     });
 
     it('can listen for queries', function () {
@@ -32,12 +29,10 @@ describe('QueryListener', function () {
         });
 
         expect($result)->toBe('test result');
-
-        // Use reflection to access the protected property
-        $reflection = new ReflectionClass($listener);
-        $property = $reflection->getProperty('enabled');
-        $property->setAccessible(true);
-        expect($property->getValue($listener))->toBeFalse();
+        
+        // After listen call, queries should be captured but listener is disabled
+        // Verified indirectly - query was captured during listening
+        expect($listener->getCallCount())->toBe(1);
     });
 
     it('captures queries during listening', function () {
@@ -133,20 +128,22 @@ describe('QueryListener', function () {
     it('handles enabled state correctly', function () {
         $listener = new QueryListener;
 
-        // Initially disabled
-        $reflection = new ReflectionClass($listener);
-        $property = $reflection->getProperty('enabled');
-        $property->setAccessible(true);
-        expect($property->getValue($listener))->toBeFalse();
+        // Initially, no queries should be captured without listening
+        DB::select('SELECT 1');
+        expect($listener->getCallCount())->toBe(0);
 
-        // During listen call - should be enabled
-        $listener->listen(function () use ($listener, $property) {
-            expect($property->getValue($listener))->toBeTrue();
-            DB::select('SELECT 1');
+        // During listen call - queries should be captured
+        $listener->listen(function () {
+            DB::select('SELECT 2');
         });
 
-        // After listen call - should be disabled again
-        expect($property->getValue($listener))->toBeFalse();
+        // Query executed during listen should be captured
+        expect($listener->getCallCount())->toBe(1);
+        expect($listener->getQueries()[0]->query)->toContain('SELECT 2');
+
+        // Queries executed outside listen should not be captured
+        DB::select('SELECT 3');
+        expect($listener->getCallCount())->toBe(1); // Still 1, not 2
     });
 
     it('captures queries with different connection names', function () {
