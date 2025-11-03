@@ -1,17 +1,16 @@
 <?php
 
-use Iak\Action\HandlesEvents;
 use Iak\Action\EmitsEvents;
+use Iak\Action\HandlesEvents;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Facades\Event;
-
 
 // EmitsEvents Attribute Tests
 describe('EmitsEvents Attribute', function () {
     it('can create with valid events', function () {
         $events = ['event1', 'event2', 'event3'];
         $emitsEvents = new EmitsEvents($events);
-        
+
         expect($emitsEvents->events)->toBe($events);
     });
 
@@ -66,11 +65,11 @@ describe('HandlesEvents Trait', function () {
 
     it('can forward events', function () {
         $action = ClosureAction::make();
-        
+
         $result = $action->forwardEvents(['test.event.a']);
 
         expect($result)->toBe($action);
-        
+
         // Use reflection to access the protected property
         $reflection = new ReflectionClass($action);
         $property = $reflection->getProperty('forwardedEvents');
@@ -80,11 +79,11 @@ describe('HandlesEvents Trait', function () {
 
     it('forward events with null uses allowed events', function () {
         $action = ClosureAction::make();
-        
+
         $result = $action->forwardEvents();
 
         expect($result)->toBe($action);
-        
+
         // Use reflection to access the protected property
         $reflection = new ReflectionClass($action);
         $property = $reflection->getProperty('forwardedEvents');
@@ -94,7 +93,7 @@ describe('HandlesEvents Trait', function () {
 
     it('get allowed events returns events from attribute', function () {
         $action = ClosureAction::make();
-        
+
         $events = $action->getAllowedEvents();
 
         expect($events)->toBe(['test.event.a', 'test.event.b']);
@@ -105,7 +104,7 @@ describe('HandlesEvents Trait', function () {
 
         $action = ClosureAction::make();
         $action->on('test.event.a', function () {});
-        
+
         // Trigger destructor
         unset($action);
 
@@ -183,7 +182,8 @@ describe('Event Action Integration', function () {
                 $eventsCalled[] = 'test.event.a';
                 expect($data)->toBe('Hello, World!');
             })->handle(function () {
-                (new class {
+                (new class
+                {
                     public function handle()
                     {
                         ClosureAction::make()
@@ -206,7 +206,8 @@ describe('Event Action Integration', function () {
                 $eventsCalled[] = 'test.event.a';
                 expect($data)->toBe('Hello, World!');
             })->handle(function () {
-                (new class {
+                (new class
+                {
                     public function handle()
                     {
                         ClosureAction::make()
@@ -227,7 +228,8 @@ describe('Event Action Integration', function () {
             ->on('test.event.a', function () use (&$eventsCalled) {
                 $eventsCalled[] = 'test.event.a';
             })->handle(function () {
-                (new class {
+                (new class
+                {
                     public function handle()
                     {
                         ClosureAction::make()
@@ -244,37 +246,37 @@ describe('Event Action Integration', function () {
     it('cleans up event listeners on destruction', function () {
         $action = ClosureAction::make();
         $action->on('test.event.a', function () {});
-        
+
         // Verify event listener is registered by checking if it exists
         $reflection = new ReflectionClass($action);
         $method = $reflection->getMethod('generateEventName');
         $method->setAccessible(true);
         $eventName = $method->invoke($action, 'test.event.a');
-        
+
         expect(\Illuminate\Support\Facades\Event::hasListeners($eventName))->toBeTrue();
-        
+
         unset($action);
-        
+
         // Event listener should be cleaned up
         expect(\Illuminate\Support\Facades\Event::hasListeners($eventName))->toBeFalse();
     });
 
     it('handles edge case with circular event propagation', function () {
         $eventsReceived = [];
-        
+
         $action1 = ClosureAction::make();
         $action2 = ClosureAction::make();
-        
+
         $action1->on('test.event.a', function ($data) use (&$eventsReceived, $action2) {
             $eventsReceived[] = $data;
             // This could cause circular propagation, but should be handled
             $action2->event('test.event.a', $data);
         });
-        
+
         $action1->handle(function ($action) {
             $action->event('test.event.a', 'Hello, World!');
         });
-        
+
         // Should not cause infinite loop - the propagation should be limited
         expect($eventsReceived)->toHaveCount(1);
     });

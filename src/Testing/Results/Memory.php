@@ -15,11 +15,11 @@ class Memory
     public function formattedMemory(?string $unit = null): int|string
     {
         $formatter = new MemoryFormatter($this->memory);
-        
+
         if ($unit === null) {
             return $formatter->formatBytes();
         }
-        
+
         return $formatter->convertToUnit($unit);
     }
 }

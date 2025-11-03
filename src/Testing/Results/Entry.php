@@ -6,7 +6,7 @@ use Carbon\Carbon;
 
 class Entry
 {
-       public function __construct(
+    public function __construct(
         public string $level,
         public string $message,
         /** @var array<mixed> */
@@ -19,7 +19,8 @@ class Entry
     public function __toString(): string
     {
         $actionInfo = $this->action ? " | Action: {$this->action}" : '';
-        return "[{$this->timestamp->toDateTimeString()}] {$this->channel}.{$this->level}: {$this->message}" . 
-               (empty($this->context) ? '' : ' ' . json_encode($this->context)) . $actionInfo;
+
+        return "[{$this->timestamp->toDateTimeString()}] {$this->channel}.{$this->level}: {$this->message}".
+               (empty($this->context) ? '' : ' '.json_encode($this->context)).$actionInfo;
     }
 }

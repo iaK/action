@@ -2,10 +2,9 @@
 
 namespace Iak\Action\Testing;
 
-use Monolog\LogRecord;
 use Illuminate\Support\Carbon;
-use Iak\Action\Testing\LogListener;
 use Monolog\Handler\AbstractHandler;
+use Monolog\LogRecord;
 
 class InMemoryLogHandler extends AbstractHandler
 {
@@ -18,7 +17,7 @@ class InMemoryLogHandler extends AbstractHandler
 
     public function handle(LogRecord $record): bool
     {
-        if (!$this->listener || !$this->listener->isEnabled()) {
+        if (! $this->listener || ! $this->listener->isEnabled()) {
             return false;
         }
 

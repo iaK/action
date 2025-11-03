@@ -1,13 +1,13 @@
 <?php
 
-use Mockery\MockInterface;
+use Iak\Action\Testing\Results\Memory;
 use Iak\Action\Testing\Testable;
+use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\LogAction;
+use Iak\Action\Tests\TestClasses\OtherClosureAction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Iak\Action\Testing\Results\Memory;
-use Iak\Action\Tests\TestClasses\LogAction;
-use Iak\Action\Tests\TestClasses\ClosureAction;
-use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Mockery\MockInterface;
 
 describe('Testable', function () {
     it('can create testable action with callback', function () {
@@ -16,10 +16,10 @@ describe('Testable', function () {
             $callbackExecuted = true;
             expect($testable)->toBeInstanceOf(Testable::class);
         });
-        
+
         expect($callbackExecuted)->toBeTrue();
         expect($testable)->toBeInstanceOf(Testable::class);
-        });
+    });
 
     describe('mocking', function () {
         it('can mock actions inside other actions', function () {
@@ -38,7 +38,7 @@ describe('Testable', function () {
             ClosureAction::test()
                 ->without(OtherClosureAction::class)
                 ->handle();
-            
+
             expect(OtherClosureAction::make())->toBeInstanceOf(MockInterface::class);
         });
 
@@ -49,7 +49,7 @@ describe('Testable', function () {
                     OtherClosureAction::make()->handle();
                     ClosureAction::make()->handle();
                 });
-            
+
             // Both classes should be mocked when resolved
             expect(OtherClosureAction::make())->toBeInstanceOf(MockInterface::class);
             expect(ClosureAction::make())->toBeInstanceOf(MockInterface::class);
@@ -61,7 +61,7 @@ describe('Testable', function () {
                 ->handle(function () {
                     return OtherClosureAction::make()->handle();
                 });
-            
+
             expect($result)->toBe('Mocked hello, World!');
         });
 
@@ -74,9 +74,9 @@ describe('Testable', function () {
                     [OtherClosureAction::class => 'Mocked again!'],
                 ])
                 ->handle(function () {
-                    return ClosureAction::make()->handle() . ' ' . OtherClosureAction::make()->handle();
+                    return ClosureAction::make()->handle().' '.OtherClosureAction::make()->handle();
                 });
-            
+
             expect($result)->toBe('Mocked hello, World! Mocked again!');
         });
 
@@ -88,7 +88,7 @@ describe('Testable', function () {
                     OtherClosureAction::make()->handle();
                     ClosureAction::make()->handle();
                 });
-            
+
             expect(LogAction::make())->toBeInstanceOf(MockInterface::class);
             expect(OtherClosureAction::make())->toBeInstanceOf(OtherClosureAction::class);
             expect(ClosureAction::make())->toBeInstanceOf(ClosureAction::class);
@@ -98,7 +98,7 @@ describe('Testable', function () {
             expect(fn () => ClosureAction::test()->without(123))
                 ->toThrow(Exception::class);
         });
-        });
+    });
 
     describe('feature combinations', function () {
         describe('on parent action', function () {
@@ -215,7 +215,7 @@ describe('Testable', function () {
                     })
                     ->handle(function () {
                         LogAction::make()->handle('Composite action logging');
-                        
+
                         return 'done';
                     });
             });
@@ -242,7 +242,7 @@ describe('Testable', function () {
                 $capturedProfiles = [];
                 $capturedQueries = [];
                 $capturedLogs = [];
-                
+
                 ClosureAction::test()
                     ->profile([ClosureAction::class, LogAction::class], function ($profiles) use (&$capturedProfiles) {
                         expect($profiles)->toHaveCount(2);
@@ -265,5 +265,5 @@ describe('Testable', function () {
                     });
             });
         });
-        });
+    });
 });

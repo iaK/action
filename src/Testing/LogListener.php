@@ -3,28 +3,31 @@
 namespace Iak\Action\Testing;
 
 use Carbon\Carbon;
-use Monolog\Logger;
-use Monolog\LogRecord;
+use Iak\Action\Testing\Results\Entry;
 use Illuminate\Support\Facades\Log;
 use Monolog\Handler\AbstractHandler;
-use Iak\Action\Testing\Results\Entry;
 use Monolog\Handler\HandlerInterface;
+use Monolog\Logger;
 
 class LogListener implements Listener
 {
     protected bool $enabled = false;
+
     /** @var Entry[] */
     protected array $logs = [];
+
     protected InMemoryLogHandler $handler;
+
     /** @var list<HandlerInterface> */
     protected array $originalHandlers = [];
+
     protected ?string $action;
 
     public function __construct(?string $action = null)
     {
         $this->action = $action;
         // Create a custom handler that captures logs
-        $this->handler = new InMemoryLogHandler();
+        $this->handler = new InMemoryLogHandler;
 
         $this->handler->setListener($this);
     }
@@ -32,7 +35,7 @@ class LogListener implements Listener
     public function listen(callable $callback): mixed
     {
         $this->enabled = true;
-        
+
         // Store original handlers and add our custom handler
         $this->storeOriginalHandlers();
         $this->addCustomHandler();
@@ -45,13 +48,9 @@ class LogListener implements Listener
         }
     }
 
-    /** 
-     * @param string $level
-     * @param string $message
-     * @param array<mixed> $context
-     * @param Carbon $timestamp
-     * @param string $channel
-    */
+    /**
+     * @param  array<mixed>  $context
+     */
     public function addLog(string $level, string $message, array $context, Carbon $timestamp, string $channel): void
     {
         $this->logs[] = new Entry($level, $message, $context, $timestamp, $channel, $this->action);
@@ -76,12 +75,11 @@ class LogListener implements Listener
     }
 
     /**
-     * @param string $level
      * @return Entry[]
      */
     public function getLogsByLevel(string $level): array
     {
-        return array_filter($this->logs, fn($log) => $log->level === $level);
+        return array_filter($this->logs, fn ($log) => $log->level === $level);
     }
 
     public function clear(): void
@@ -116,7 +114,7 @@ class LogListener implements Listener
         if ($logger instanceof Logger) {
             // Remove our custom handler
             $handlers = $logger->getHandlers();
-            
+
             // Clear all handlers and restore originals
             $logger->setHandlers($this->originalHandlers);
         }

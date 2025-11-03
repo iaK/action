@@ -1,7 +1,7 @@
 <?php
 
-use Mockery\MockInterface;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Mockery\MockInterface;
 
 describe('Action', function () {
     it('can be instantiated', function () {
@@ -18,7 +18,7 @@ describe('Action', function () {
 
     it('can create fake action with custom alias', function () {
         $fake = ClosureAction::fake('custom.test.action');
-        
+
         expect($fake)->toBeInstanceOf(MockInterface::class);
         expect(app('custom.test.action'))->toBe($fake);
     });

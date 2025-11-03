@@ -2,17 +2,21 @@
 
 namespace Iak\Action\Testing;
 
-use Illuminate\Support\Facades\DB;
 use Iak\Action\Testing\Results\Query;
 use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 
 class QueryListener implements Listener
 {
     protected bool $enabled = false;
+
     /** @var Query[] */
     protected array $queries = [];
-    protected \Closure $listener;
+
+    protected \callable $listener;
+
     protected ?string $action;
+
     protected bool $isRegistered = false;
 
     public function __construct(?string $action = null)
@@ -70,7 +74,7 @@ class QueryListener implements Listener
 
     public function getTotalTime(): float
     {
-        return array_sum(array_map(fn($call) => $call->time, $this->queries));
+        return array_sum(array_map(fn ($call) => $call->time, $this->queries));
     }
 
     public function clear(): void

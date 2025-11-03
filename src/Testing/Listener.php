@@ -9,4 +9,3 @@ interface Listener
      */
     public function listen(callable $callback): mixed;
 }
-

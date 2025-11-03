@@ -26,44 +26,44 @@ class Profile
     public function memoryUsed(?string $unit = null): int|string
     {
         $formatter = new MemoryFormatter($this->endMemory - $this->startMemory);
-        
+
         if ($unit === null) {
             return $formatter->formatBytes();
         }
-        
+
         return $formatter->convertToUnit($unit);
     }
 
     public function startMemory(?string $unit = null): int|string
     {
         $formatter = new MemoryFormatter($this->startMemory);
-        
+
         if ($unit === null) {
             return $formatter->formatBytes();
         }
-        
+
         return $formatter->convertToUnit($unit);
     }
 
     public function endMemory(?string $unit = null): int|string
     {
         $formatter = new MemoryFormatter($this->endMemory);
-        
+
         if ($unit === null) {
             return $formatter->formatBytes();
         }
-        
+
         return $formatter->convertToUnit($unit);
     }
 
     public function peakMemory(?string $unit = null): int|string
     {
         $formatter = new MemoryFormatter($this->peakMemory);
-        
+
         if ($unit === null) {
             return $formatter->formatBytes();
         }
-        
+
         return $formatter->convertToUnit($unit);
     }
 
@@ -80,8 +80,7 @@ class Profile
         $memoryInfo = $this->startMemory > 0 || $this->endMemory > 0 || $this->peakMemory > 0
             ? " (memory: {$this->memoryUsed()}, peak: {$this->peakMemory()})"
             : '';
-            
+
         return "{$this->class} took {$this->duration()->totalMilliseconds}ms{$memoryInfo}";
     }
 }
-

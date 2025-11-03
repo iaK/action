@@ -23,6 +23,7 @@ class Query
     public function __toString(): string
     {
         $actionInfo = $this->action ? " | Action: {$this->action}" : '';
-        return "Query: {$this->query} | Bindings: " . json_encode($this->bindings) . " | Time: {$this->duration()->totalMilliseconds}ms{$actionInfo}";
+
+        return "Query: {$this->query} | Bindings: ".json_encode($this->bindings)." | Time: {$this->duration()->totalMilliseconds}ms{$actionInfo}";
     }
 }

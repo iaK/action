@@ -2,11 +2,11 @@
 
 namespace Iak\Action;
 
+use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Event;
 use Mockery;
-use Iak\Action\Testing\Testable;
-use Mockery\MockInterface;
 use Mockery\LegacyMockInterface;
+use Mockery\MockInterface;
 
 /**
  * @method mixed handle(...$args) Execute the action with the given arguments. This method must be implemented by concrete action classes.
@@ -22,7 +22,7 @@ abstract class Action
     {
         // Dispatch an instance-scoped Laravel event so any profiler
         // attached to this specific instance can record the memory point.
-        $eventName = 'action.record_memory.' . spl_object_hash($this);
+        $eventName = 'action.record_memory.'.spl_object_hash($this);
         Event::dispatch($eventName, [$name]);
     }
 
@@ -53,7 +53,7 @@ abstract class Action
     {
         $action = static::make();
         $testable = new Testable($action);
-                
+
         if (isset($callback)) {
             $callback($testable);
         }

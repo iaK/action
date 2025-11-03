@@ -3,17 +3,13 @@
 namespace Iak\Action\Testing;
 
 use Iak\Action\Action;
-use Mockery\MockInterface;
-use Mockery\LegacyMockInterface;
+use Iak\Action\Testing\Results\Entry;
+use Iak\Action\Testing\Results\Profile;
+use Iak\Action\Testing\Results\Query;
 use Illuminate\Pipeline\Pipeline;
 use Illuminate\Support\Collection;
-use Iak\Action\Testing\LogListener;
-use Iak\Action\Testing\QueryListener;
-use Iak\Action\Testing\Results\Entry;
-use Iak\Action\Testing\Results\Query;
-use Iak\Action\Testing\ProfileListener;
-use Iak\Action\Testing\Results\Profile;
-use Iak\Action\Testing\ProxyConfiguration;
+use Mockery\LegacyMockInterface;
+use Mockery\MockInterface;
 
 class Testable
 {
@@ -25,29 +21,37 @@ class Testable
     protected array $only = [];
 
     protected bool $profileMainAction = false;
+
     /** @var array<class-string> */
     protected array $actionsToBeProfiled = [];
+
     /** @var array<Profile> */
     protected array $profiledActions = [];
+
     protected \Closure $profilesCallback;
-    
+
     protected bool $recordMainActionDbCalls = false;
+
     /** @var array<class-string> */
     protected array $actionsToRecordDbCalls = [];
+
     /** @var array<Query> */
     protected array $recordedDbCalls = [];
+
     protected \Closure $dbCallsCallback;
-    
+
     protected bool $recordMainActionLogs = false;
+
     /** @var array<class-string> */
     protected array $actionsToRecordLogs = [];
+
     /** @var array<Entry> */
     protected array $recordedLogs = [];
+
     protected \Closure $logsCallback;
-    
+
     /**
-     * @param string|object|array<class-string|object> $classes
-     * @return static
+     * @param  string|object|array<class-string|object>  $classes
      */
     public function without(string|object|array $classes): static
     {
@@ -56,10 +60,10 @@ class Testable
         collect($classes)->each(function ($class, $key) {
             [$class, $returnValue] = $this->getClassAndReturnValue($class, $key);
 
-            if (!class_exists($class) && !app()->bound($class)) {
+            if (! class_exists($class) && ! app()->bound($class)) {
                 throw new \InvalidArgumentException("The class or alias {$class} is not bound to the container");
             }
-            
+
             if (is_string($class)) {
                 $mock = $class::fake()->shouldReceive('handle');
                 if ($returnValue) {
@@ -80,9 +84,9 @@ class Testable
     }
 
     /**
-     * @param string|array<class-string|object> $classes
+     * @param  string|array<class-string|object>  $classes
      */
-    public function only(string|array $classes ): static
+    public function only(string|array $classes): static
     {
         $classes = is_array($classes) ? $classes : [$classes];
 
@@ -93,13 +97,13 @@ class Testable
 
     /**
      * @param  \Closure|string|array<class-string>  $actions
-     * @param  ?\Closure  $callback
      */
-    public function profile($actions, ?\Closure $callback = null) : static
+    public function profile($actions, ?\Closure $callback = null): static
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->profilesCallback = $actions;
             $this->profileMainAction = true;
+
             return $this;
         }
 
@@ -109,12 +113,12 @@ class Testable
 
         $this->actionsToBeProfiled = is_array($actions) ? $actions : [$actions];
 
-        foreach($this->actionsToBeProfiled as $profile) {
-            if (!class_exists($profile) && !app()->bound($profile)) {
+        foreach ($this->actionsToBeProfiled as $profile) {
+            if (! class_exists($profile) && ! app()->bound($profile)) {
                 throw new \InvalidArgumentException("The class or alias {$profile} is not bound to the container");
             }
         }
-        
+
         $this->profilesCallback = $callback;
 
         return $this;
@@ -122,14 +126,14 @@ class Testable
 
     /**
      * @param  \Closure|string|array<class-string>  $actions
-     * @param  ?\Closure  $callback
      */
-    public function queries($actions, ?\Closure $callback = null) : static
+    public function queries($actions, ?\Closure $callback = null): static
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->dbCallsCallback = $actions;
             $this->actionsToRecordDbCalls = [$this->action::class];
             $this->recordMainActionDbCalls = true;
+
             return $this;
         }
 
@@ -139,12 +143,12 @@ class Testable
 
         $this->actionsToRecordDbCalls = is_array($actions) ? $actions : [$actions];
 
-        foreach($this->actionsToRecordDbCalls as $record) {
-            if (!class_exists($record) && !app()->bound($record)) {
+        foreach ($this->actionsToRecordDbCalls as $record) {
+            if (! class_exists($record) && ! app()->bound($record)) {
                 throw new \InvalidArgumentException("The class or alias {$record} is not bound to the container");
             }
         }
-        
+
         $this->dbCallsCallback = $callback;
 
         return $this;
@@ -152,13 +156,13 @@ class Testable
 
     /**
      * @param  \Closure|string|array<class-string>  $actions
-     * @param  ?\Closure  $callback
      */
-    public function logs($actions, ?\Closure $callback = null) : static
+    public function logs($actions, ?\Closure $callback = null): static
     {
         if (is_null($callback) && is_callable($actions)) {
             $this->logsCallback = $actions;
             $this->recordMainActionLogs = true;
+
             return $this;
         }
 
@@ -168,12 +172,12 @@ class Testable
 
         $this->actionsToRecordLogs = is_array($actions) ? $actions : [$actions];
 
-        foreach($this->actionsToRecordLogs as $record) {
-            if (!class_exists($record) && !app()->bound($record)) {
+        foreach ($this->actionsToRecordLogs as $record) {
+            if (! class_exists($record) && ! app()->bound($record)) {
                 throw new \InvalidArgumentException("The class or alias {$record} is not bound to the container");
             }
         }
-        
+
         $this->logsCallback = $callback;
 
         return $this;
@@ -218,6 +222,7 @@ class Testable
      * Build the array of pipeline pipes to apply based on enabled features.
      * Pipes are applied in order: first pipe becomes outermost wrapper.
      * This creates: Logs -> DB -> Profile -> Base execution
+     *
      * @return Collection<int, \Closure>
      */
     protected function buildPipelinePipes(): Collection
@@ -227,6 +232,7 @@ class Testable
                 return $pipes->push(function (\Closure $execute, \Closure $next) {
                     // Call next to get the closure wrapped by subsequent pipes
                     $wrapped = $next($execute);
+
                     // Wrap it with log instrumentation (outermost)
                     return function () use ($wrapped) {
                         $listener = new LogListener($this->action::class);
@@ -234,6 +240,7 @@ class Testable
                             return $wrapped();
                         });
                         $this->addLogs($listener->getLogs());
+
                         return $result;
                     };
                 });
@@ -242,6 +249,7 @@ class Testable
                 return $pipes->push(function (\Closure $execute, \Closure $next) {
                     // Call next to get the closure wrapped by subsequent pipes
                     $wrapped = $next($execute);
+
                     // Wrap it with database query instrumentation (middle)
                     return function () use ($wrapped) {
                         $listener = new QueryListener($this->action::class);
@@ -249,6 +257,7 @@ class Testable
                             return $wrapped();
                         });
                         $this->addQueries($listener->getQueries());
+
                         return $result;
                     };
                 });
@@ -257,6 +266,7 @@ class Testable
                 return $pipes->push(function (\Closure $execute, \Closure $next) {
                     // Call next to get the closure wrapped by subsequent pipes
                     $wrapped = $next($execute);
+
                     // Wrap it with profile instrumentation (innermost - wraps base)
                     return function () use ($wrapped) {
                         $listener = new ProfileListener($this->action, $this->action);
@@ -264,15 +274,15 @@ class Testable
                             return $wrapped();
                         });
                         $this->addProfile($listener->getProfile());
+
                         return $result;
                     };
                 });
             });
     }
 
-
     /**
-     * @param array<Query> $queries
+     * @param  array<Query>  $queries
      */
     public function addQueries(array $queries): void
     {
@@ -284,7 +294,7 @@ class Testable
     }
 
     /**
-     * @param array<Entry> $logs
+     * @param  array<Entry>  $logs
      */
     public function addLogs(array $logs): void
     {
@@ -295,9 +305,6 @@ class Testable
         $this->recordedLogs = array_merge($this->recordedLogs, $logs);
     }
 
-    /**
-     * @param Profile $profile
-     */
     public function addProfile(Profile $profile): void
     {
         $this->profiledActions[] = $profile;
@@ -306,18 +313,19 @@ class Testable
     protected function interceptProfiles(): void
     {
         foreach ($this->actionsToBeProfiled as $actionToBeProfiled) {
-            if (!class_exists($actionToBeProfiled)) {
+            if (! class_exists($actionToBeProfiled)) {
                 throw new \InvalidArgumentException("Invalid profile class: $actionToBeProfiled");
             }
-                        
+
             $this->bindProxyWrapper($actionToBeProfiled, function ($action) use ($actionToBeProfiled) {
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToBeProfiled);
                 $config = new ProxyConfiguration(
-                    fn($action, $eventSource) => new ProfileListener($action, $eventSource),
-                    fn($testable, $resultData) => $testable->addProfile($resultData),
-                    fn($listener) => $listener->getProfile()
+                    fn ($action, $eventSource) => new ProfileListener($action, $eventSource),
+                    fn ($testable, $resultData) => $testable->addProfile($resultData),
+                    fn ($listener) => $listener->getProfile()
                 );
+
                 return new $proxyClass($this, $action, $config);
             });
         }
@@ -330,18 +338,19 @@ class Testable
         }
 
         foreach ($this->actionsToRecordDbCalls as $actionToRecordDbCalls) {
-            if (!class_exists($actionToRecordDbCalls)) {
+            if (! class_exists($actionToRecordDbCalls)) {
                 throw new \InvalidArgumentException("Invalid recordDbCalls class: $actionToRecordDbCalls");
             }
-                        
+
             $this->bindProxyWrapper($actionToRecordDbCalls, function ($action) use ($actionToRecordDbCalls) {
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToRecordDbCalls);
                 $config = new ProxyConfiguration(
-                    fn($action, $eventSource) => new QueryListener(get_class($action)),
-                    fn($testable, $resultData) => $testable->addQueries($resultData),
-                    fn($listener) => $listener->getQueries()
+                    fn ($action, $eventSource) => new QueryListener(get_class($action)),
+                    fn ($testable, $resultData) => $testable->addQueries($resultData),
+                    fn ($listener) => $listener->getQueries()
                 );
+
                 return new $proxyClass($this, $action, $config);
             });
         }
@@ -354,18 +363,19 @@ class Testable
         }
 
         foreach ($this->actionsToRecordLogs as $actionToRecordLogs) {
-            if (!class_exists($actionToRecordLogs)) {
+            if (! class_exists($actionToRecordLogs)) {
                 throw new \InvalidArgumentException("Invalid recordLogs class: $actionToRecordLogs");
             }
-                        
+
             $this->bindProxyWrapper($actionToRecordLogs, function ($action) use ($actionToRecordLogs) {
                 // Use the original action class (the resolved action might already be a proxy)
                 $proxyClass = $this->createProxyClass($actionToRecordLogs);
                 $config = new ProxyConfiguration(
-                    fn($action, $eventSource) => new LogListener(get_class($action)),
-                    fn($testable, $resultData) => $testable->addLogs($resultData),
-                    fn($listener) => $listener->getLogs()
+                    fn ($action, $eventSource) => new LogListener(get_class($action)),
+                    fn ($testable, $resultData) => $testable->addLogs($resultData),
+                    fn ($listener) => $listener->getLogs()
                 );
+
                 return new $proxyClass($this, $action, $config);
             });
         }
@@ -404,10 +414,10 @@ class Testable
         string $actionClass,
     ): string {
         // Create a dynamic proxy class that extends the action and uses the proxy trait
-        $proxyClass = "Proxy_" . md5($actionClass . spl_object_id($this));
-        $fqcn = '\\' . ltrim($actionClass, '\\');
+        $proxyClass = 'Proxy_'.md5($actionClass.spl_object_id($this));
+        $fqcn = '\\'.ltrim($actionClass, '\\');
 
-        if (!class_exists($actionClass)) {
+        if (! class_exists($actionClass)) {
             throw new \InvalidArgumentException("Invalid class: $actionClass");
         }
 
@@ -434,11 +444,11 @@ class Testable
         }
 
         app()->beforeResolving(function ($object) {
-            if (!class_exists($object)) {
+            if (! class_exists($object)) {
                 return;
             }
 
-            if (!(new \ReflectionClass($object))->isSubclassOf(Action::class)) {
+            if (! (new \ReflectionClass($object))->isSubclassOf(Action::class)) {
                 return;
             }
 
@@ -447,14 +457,14 @@ class Testable
             }
 
             foreach (debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT) as $frame) {
-                if (!isset($frame['object']) || $frame['object'] === $this) {
+                if (! isset($frame['object']) || $frame['object'] === $this) {
                     continue;
                 }
 
-                if (!$frame['object'] instanceof ($this->action::class)) {
+                if (! $frame['object'] instanceof ($this->action::class)) {
                     continue;
                 }
-        
+
                 $object::fake()->shouldReceive('handle');
                 break;
             }
@@ -462,8 +472,7 @@ class Testable
     }
 
     /**
-     * @param string|object|array<class-string|object> $class
-     * @param string|int $key
+     * @param  string|object|array<class-string|object>  $class
      * @return array<string|object|null>
      */
     protected function getClassAndReturnValue(string|object|array $class, string|int $key): array
