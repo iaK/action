@@ -204,13 +204,14 @@ The `only()` method specifies which actions should **execute normally**. All oth
 ```php
 use App\Actions\ProcessOrderAction;
 use App\Actions\CalculateTaxAction;
+use App\Actions\ChargeCustomerAction;
 use App\Actions\SendEmailAction;
 
 it('only executes specific actions', function () {
     ProcessOrderAction::test()
-        ->only([ProcessOrderAction::class, CalculateTaxAction::class])
+        ->only([ChargeCustomerAction::class, CalculateTaxAction::class])
         ->handle(function () {
-            // ProcessOrderAction executes normally
+            // ChargeCustomerAction executes normally
             // CalculateTaxAction executes normally
             // SendEmailAction is automatically mocked
         });
@@ -222,7 +223,7 @@ You can also specify a single action:
 ```php
 it('allows only one action to execute', function () {
     ProcessOrderAction::test()
-        ->only(ProcessOrderAction::class)
+        ->only(ChargeCustomerAction::class)
         ->handle();
 });
 ```
@@ -236,7 +237,8 @@ it('mocks specific actions', function () {
     ProcessOrderAction::test()
         ->without(SendEmailAction::class)
         ->handle(function () {
-            // ProcessOrderAction executes normally
+            // ChargeCustomerAction executes normally
+            // CalculateTaxAction executes normally
             // SendEmailAction is mocked
         });
 });
@@ -247,7 +249,7 @@ You can mock multiple actions:
 ```php
 it('mocks multiple actions', function () {
     ProcessOrderAction::test()
-        ->without([SendEmailAction::class, LogAction::class])
+        ->without([SendEmailAction::class, ChargeCustomerAction::class])
         ->handle();
 });
 ```
@@ -261,49 +263,13 @@ it('mocks actions with custom return values', function () {
             CalculateTaxAction::class => 10.50,
             SendEmailAction::class => true,
         ])
-        ->handle(function () {
-            $tax = CalculateTaxAction::make()->handle(); // Returns 10.50
-            $sent = SendEmailAction::make()->handle(); // Returns true
-            
-            return compact('tax', 'sent');
-        });
-    
-    expect($result['tax'])->toBe(10.50);
-    expect($result['sent'])->toBeTrue();
+        ->handle();
 });
 ```
 
 #### The `except()` Method
 
 The `except()` method is an alias for `without()`, providing an alternative syntax that may be more readable in certain contexts.
-
-```php
-it('mocks specific actions using except', function () {
-    ProcessOrderAction::test()
-        ->except(SendEmailAction::class)
-        ->handle(function () {
-            // ProcessOrderAction executes normally
-            // SendEmailAction is mocked
-        });
-});
-```
-
-All functionality available with `without()` is also available with `except()`:
-
-```php
-// Mock multiple actions
-ProcessOrderAction::test()
-    ->except([SendEmailAction::class, LogAction::class])
-    ->handle();
-
-// Mock with custom return values
-$result = ProcessOrderAction::test()
-    ->except([
-        CalculateTaxAction::class => 10.50,
-        SendEmailAction::class => true,
-    ])
-    ->handle();
-```
 
 ### Testing Database Queries
 
