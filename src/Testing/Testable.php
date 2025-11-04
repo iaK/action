@@ -2,14 +2,16 @@
 
 namespace Iak\Action\Testing;
 
+use Mockery;
 use Iak\Action\Action;
-use Iak\Action\Testing\Results\Entry;
-use Iak\Action\Testing\Results\Profile;
-use Iak\Action\Testing\Results\Query;
-use Illuminate\Pipeline\Pipeline;
-use Illuminate\Support\Collection;
-use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
+use Mockery\LegacyMockInterface;
+use Illuminate\Pipeline\Pipeline;
+use Mockery\CompositeExpectation;
+use Illuminate\Support\Collection;
+use Iak\Action\Testing\Results\Entry;
+use Iak\Action\Testing\Results\Query;
+use Iak\Action\Testing\Results\Profile;
 
 class Testable
 {
@@ -59,6 +61,10 @@ class Testable
 
         collect($classes)->each(function ($class, $key) {
             [$class, $returnValue] = $this->getClassAndReturnValue($class, $key);
+
+            if ($class instanceof CompositeExpectation) {
+                return $class->getMock();
+            }
 
             if ($class instanceof MockInterface || $class instanceof LegacyMockInterface) {
                 return $class;
@@ -415,13 +421,12 @@ class Testable
             return $proxyClass;
         }
 
-        $code = <<<PHP
-    final class $proxyClass extends $fqcn 
-    {
-    use \\Iak\\Action\\Testing\\Traits\\ProxyTrait;
-    }
-    PHP;
-        eval($code);
+        eval(<<<PHP
+            final class $proxyClass extends $fqcn 
+            {
+                use \\Iak\\Action\\Testing\\Traits\\ProxyTrait;
+            }
+        PHP);
 
         return $proxyClass;
     }
@@ -454,7 +459,19 @@ class Testable
                     continue;
                 }
 
-                $object::fake()->shouldReceive('handle');
+                // $object::fake()->shouldReceive('handle');
+                $mockName = 'Mock_'.md5($object.spl_object_id($this));
+                eval(<<<PHP
+                    class $mockName extends $object {
+                        public function handle(...\$args) {}
+                    };
+                PHP);
+
+                $mock = Mockery::mock($mockName);
+                $mock->shouldReceive('handle')->withAnyArgs()->andReturn(null);
+
+                app()->offsetSet($object, $mock);
+
                 break;
             }
         });

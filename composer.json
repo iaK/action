@@ -37,7 +37,8 @@
     },
     "autoload": {
         "psr-4": {
-            "Iak\\Action\\": "src/"
+            "Iak\\Action\\": "src/",
+            "Iak\\Action\\Manual\\": "Manual/"
         }
     },
     "autoload-dev": {
