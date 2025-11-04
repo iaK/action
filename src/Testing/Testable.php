@@ -2,16 +2,16 @@
 
 namespace Iak\Action\Testing;
 
-use Mockery;
 use Iak\Action\Action;
-use Mockery\MockInterface;
-use Mockery\LegacyMockInterface;
-use Illuminate\Pipeline\Pipeline;
-use Mockery\CompositeExpectation;
-use Illuminate\Support\Collection;
 use Iak\Action\Testing\Results\Entry;
-use Iak\Action\Testing\Results\Query;
 use Iak\Action\Testing\Results\Profile;
+use Iak\Action\Testing\Results\Query;
+use Illuminate\Pipeline\Pipeline;
+use Illuminate\Support\Collection;
+use Mockery;
+use Mockery\CompositeExpectation;
+use Mockery\LegacyMockInterface;
+use Mockery\MockInterface;
 
 class Testable
 {
