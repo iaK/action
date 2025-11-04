@@ -20,7 +20,7 @@ class Profile
 
     public function duration(): CarbonInterval
     {
-        return CarbonInterval::microseconds(($this->end - $this->start) * 1_000_000);
+        return CarbonInterval::microseconds(($this->end - $this->start) * 1_000_000)->cascade();
     }
 
     public function memoryUsed(?string $unit = null): int|string
