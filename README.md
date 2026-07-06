@@ -13,7 +13,7 @@ A simple way to organize your business logic in Laravel applications.
 composer require iak/action
 ```
 
-## Basic Usage
+## Production API
 
 ### Creating an Action
 
@@ -57,22 +57,7 @@ class HomeController extends Controller
 }
 ```
 
-## Static Methods
-
-Actions provide helpful static methods:
-
-```php
-// Create an instance
-$action = SayHelloAction::make();
-
-// Create a fake for testing
-$action = SayHelloAction::fake();
-
-// Create a testable action to help test logs, performance, database queries and more
-$action = SayHelloAction::test();
-```
-
-## Events
+### Events
 
 Actions can emit and listen to events:
 
@@ -109,7 +94,7 @@ $action = SayHelloAction::make()
     ->handle();
 ```
 
-### Forwarding Events
+#### Forwarding Events
 
 When you have nested actions, you can use `forwardEvents()` to propagate events from child actions to parent classes that use the `HandlesEvents` trait, even if there are intermediate classes between them. This is particularly useful when services call actions and want to listen to events from those actions.
 
@@ -171,7 +156,30 @@ SendEmailAction::make()
     ->handle($user);
 ```
 
-## Testing
+## Testing & debugging
+
+Actions provide helpful static methods for testing and debugging:
+
+```php
+// Create a fake for testing
+$action = SayHelloAction::fake();
+
+// Create a testable action to help test logs, performance, database queries and more
+$action = SayHelloAction::test();
+```
+
+> **Heads up — the mock-binding helpers are test-only.**
+> `Action::fake()` and `Testable::only()` / `without()` / `except()` bind Mockery
+> mocks into the container, so they throw a `RuntimeException` when called outside
+> a test context — they run only when `runningUnitTests()` is true or the app
+> environment is `local` or `testing`. This stops a forgotten `fake()` from
+> silently replacing real actions with mocks in staging or production. If you
+> genuinely need them elsewhere, opt in explicitly with `Action::allowTestHelpers()`.
+>
+> The observability helpers — `test()->profile()`, `->queries()` and `->logs()` —
+> are **not** guarded. They are Mockery-free and restore the container to its
+> previous state after running, so they are the supported way to profile or
+> inspect an action in production.
 
 ### Basic Testing
 
