@@ -13,6 +13,7 @@ All notable changes to `laravel-action` will be documented in this file.
 
 **Improvements**
 
+- Event propagation no longer captures call-stack arguments, and the per-call trait and attribute reflection (`usesHandlesEvents()`, `getAllowedEvents()`) is now cached per class.
 - PHPStan level 9 (up from 6) with full generics: `Action::test()` returns `Testable<static>`, `Action::fake()` returns `static&MockInterface`, and all inspection callbacks have typed closure signatures, so editors autocomplete `$queries`, `$logs` and `$profiles` inside callbacks.
 - `only()` now also mocks constructor-injected child actions, not just actions resolved during `handle()`.
 - Auto-mocked actions return a zero value matching their declared `handle()` return type (`''`, `0`, `false`, `[]`) instead of `null`.

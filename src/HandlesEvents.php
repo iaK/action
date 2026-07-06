@@ -58,7 +58,7 @@ trait HandlesEvents
      */
     protected function propagateToAncestor(string $event, mixed $data): void
     {
-        $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
+        $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT | DEBUG_BACKTRACE_IGNORE_ARGS);
 
         array_shift($trace);
 
@@ -100,20 +100,51 @@ trait HandlesEvents
     }
 
     /**
+     * Cache of whether a given class uses the HandlesEvents trait, keyed by class name
+     *
+     * Static trait properties are duplicated per using class but shared with
+     * subclasses via self::, so entries must stay keyed by the runtime class
+     * ($object::class) rather than self::class.
+     *
+     * @var array<class-string, bool>
+     */
+    protected static array $usesHandlesEventsCache = [];
+
+    /**
      * Determine if the object uses the HandlesEvents trait anywhere in its class hierarchy
      */
     protected function usesHandlesEvents(object $object): bool
     {
         $class = $object::class;
 
-        do {
-            if (in_array(HandlesEvents::class, class_uses($class) ?: [], true)) {
-                return true;
-            }
-        } while ($class = get_parent_class($class));
+        if (isset(self::$usesHandlesEventsCache[$class])) {
+            return self::$usesHandlesEventsCache[$class];
+        }
 
-        return false;
+        $current = $class;
+        $uses = false;
+
+        do {
+            if (in_array(HandlesEvents::class, class_uses($current) ?: [], true)) {
+                $uses = true;
+                break;
+            }
+        } while ($current = get_parent_class($current));
+
+        return self::$usesHandlesEventsCache[$class] = $uses;
     }
+
+    /**
+     * Cache of resolved allowed events, keyed by class name
+     *
+     * Storage is shared across the inheritance subtree via self::, so a subclass
+     * (or eval'd proxy) without its own #[EmitsEvents] must still be keyed by its
+     * own runtime class (static::class) even though it caches its parent's
+     * events - otherwise its fallback would overwrite the parent's own entry.
+     *
+     * @var array<class-string, array<int, string>>
+     */
+    protected static array $allowedEventsCache = [];
 
     /**
      * Get allowed events declared via #[EmitsEvents(...)]
@@ -122,7 +153,13 @@ trait HandlesEvents
      */
     public function getAllowedEvents(): array
     {
-        $reflection = new \ReflectionClass(static::class);
+        $class = static::class;
+
+        if (isset(self::$allowedEventsCache[$class])) {
+            return self::$allowedEventsCache[$class];
+        }
+
+        $reflection = new \ReflectionClass($class);
         $attributes = $reflection->getAttributes(EmitsEvents::class);
 
         // If no attributes found, check parent class (for proxy classes)
@@ -131,10 +168,10 @@ trait HandlesEvents
         }
 
         if (empty($attributes)) {
-            return [];
+            return self::$allowedEventsCache[$class] = [];
         }
 
-        return $attributes[0]->newInstance()->events;
+        return self::$allowedEventsCache[$class] = $attributes[0]->newInstance()->events;
     }
 
     /**
