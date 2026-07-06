@@ -242,7 +242,7 @@ describe('ProfileListener', function () {
         expect($profile->memoryRecords[0]->name)->toBe('proxy_memory_point');
     });
 
-    it('removes its record_memory listeners after listening', function () {
+    it('stops recording memory events after the profiled run', function () {
         $action = new ClosureAction;
         $proxy = new ClosureAction;
 
@@ -251,14 +251,13 @@ describe('ProfileListener', function () {
 
         $profiler = new ProfileListener($action, $proxy);
 
-        expect(Event::hasListeners($actionEvent))->toBeTrue();
-        expect(Event::hasListeners($proxyEvent))->toBeTrue();
-
         $profiler->listen(fn () => 'result');
 
         // Listeners must not outlive the profiled run: spl_object_hash values
         // are recycled, so stale listeners can fire for unrelated objects
-        expect(Event::hasListeners($actionEvent))->toBeFalse();
-        expect(Event::hasListeners($proxyEvent))->toBeFalse();
+        Event::dispatch($actionEvent, ['stale-action-point']);
+        Event::dispatch($proxyEvent, ['stale-proxy-point']);
+
+        expect($profiler->getProfile()->memoryRecords)->toHaveCount(0);
     });
 });

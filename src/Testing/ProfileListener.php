@@ -69,11 +69,24 @@ class ProfileListener implements Listener
 
     protected function removeListeners(): void
     {
+        // Resolve the dispatcher from the container rather than the facade:
+        // when called from the destructor during test teardown, the facade
+        // may point at a previous, flushed application
+        $dispatcher = app()->make('events');
+
         foreach ($this->listeningTo as $event) {
-            Event::forget($event);
+            $dispatcher->forget($event);
         }
 
         $this->listeningTo = [];
+    }
+
+    public function __destruct()
+    {
+        // Clean up after profilers that were constructed but never ran
+        if (! empty($this->listeningTo) && app()->resolved('events')) {
+            $this->removeListeners();
+        }
     }
 
     public function handle(mixed ...$arguments): mixed
