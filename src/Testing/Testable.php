@@ -25,43 +25,30 @@ class Testable
      */
     public function __construct(
         public Action $action
-    ) {}
+    ) {
+        // Array order defines handle()'s wrapping order: first entry innermost (profile),
+        // last outermost (logs). This ordering is pinned by tests.
+        $this->instruments = [
+            'profile' => new Instrumentation(
+                static fn (Action $action, Action $eventSource): ProfileListener => new ProfileListener($action, $eventSource),
+                static fn (Listener $listener): array => $listener instanceof ProfileListener ? [$listener->getProfile()] : [],
+            ),
+            'queries' => new Instrumentation(
+                static fn (Action $action, Action $eventSource): QueryListener => new QueryListener($action::class),
+                static fn (Listener $listener): array => $listener instanceof QueryListener ? $listener->getQueries() : [],
+            ),
+            'logs' => new Instrumentation(
+                static fn (Action $action, Action $eventSource): LogListener => new LogListener($action::class),
+                static fn (Listener $listener): array => $listener instanceof LogListener ? $listener->getLogs() : [],
+            ),
+        ];
+    }
+
+    /** @var array<string, Instrumentation<Listener, mixed>> */
+    protected array $instruments;
 
     /** @var array<int, class-string<Action>> */
     protected array $only = [];
-
-    protected bool $profileMainAction = false;
-
-    /** @var array<int, class-string<Action>> */
-    protected array $actionsToBeProfiled = [];
-
-    /** @var array<int, Profile> */
-    protected array $profiledActions = [];
-
-    /** @var Closure(Collection<int, Profile>): void */
-    protected Closure $profilesCallback;
-
-    protected bool $recordMainActionDbCalls = false;
-
-    /** @var array<int, class-string<Action>> */
-    protected array $actionsToRecordDbCalls = [];
-
-    /** @var array<int, Query> */
-    protected array $recordedDbCalls = [];
-
-    /** @var Closure(Collection<int, Query>): void */
-    protected Closure $dbCallsCallback;
-
-    protected bool $recordMainActionLogs = false;
-
-    /** @var array<int, class-string<Action>> */
-    protected array $actionsToRecordLogs = [];
-
-    /** @var array<int, Entry> */
-    protected array $recordedLogs = [];
-
-    /** @var Closure(Collection<int, Entry>): void */
-    protected Closure $logsCallback;
 
     /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
     protected array $replacedBindings = [];
@@ -143,27 +130,7 @@ class Testable
      */
     public function profile(Closure|string|array $actions, ?Closure $callback = null): static
     {
-        if (is_null($callback) && $actions instanceof Closure) {
-            $this->profilesCallback = $actions;
-            $this->profileMainAction = true;
-
-            return $this;
-        }
-
-        if (is_null($callback)) {
-            throw new InvalidArgumentException('A callback is required');
-        }
-
-        $actions = is_array($actions) ? $actions : [$actions];
-
-        $this->actionsToBeProfiled = array_map(
-            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
-            $actions
-        );
-
-        $this->profilesCallback = $callback;
-
-        return $this;
+        return $this->register($this->instruments['profile'], $actions, $callback);
     }
 
     /**
@@ -175,26 +142,15 @@ class Testable
      */
     public function queries(Closure|string|array $actions, ?Closure $callback = null): static
     {
-        if (is_null($callback) && $actions instanceof Closure) {
-            $this->dbCallsCallback = $actions;
-            $this->actionsToRecordDbCalls = [$this->action::class];
-            $this->recordMainActionDbCalls = true;
+        $this->register($this->instruments['queries'], $actions, $callback);
 
-            return $this;
+        // When only a callback is given, the action under test is also
+        // registered as a nested proxy target. The binding is reachable if the
+        // action is re-resolved from the container during the run (e.g. a
+        // self-resolving action); it is preserved here for exact behavioral parity.
+        if ($callback === null && $actions instanceof Closure) {
+            $this->instruments['queries']->actions = [$this->action::class];
         }
-
-        if (is_null($callback)) {
-            throw new InvalidArgumentException('A callback is required');
-        }
-
-        $actions = is_array($actions) ? $actions : [$actions];
-
-        $this->actionsToRecordDbCalls = array_map(
-            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
-            $actions
-        );
-
-        $this->dbCallsCallback = $callback;
 
         return $this;
     }
@@ -208,9 +164,25 @@ class Testable
      */
     public function logs(Closure|string|array $actions, ?Closure $callback = null): static
     {
+        return $this->register($this->instruments['logs'], $actions, $callback);
+    }
+
+    /**
+     * Shared registration logic for the profile()/queries()/logs() registrars:
+     * capture a callback for the action under test, or resolve a list of nested
+     * actions to instrument.
+     *
+     * The exact generic callback signatures are declared on the public
+     * registrars; here they are handled as bare Closures.
+     *
+     * @param  Instrumentation<Listener, mixed>  $instrument
+     * @param  Closure|class-string<Action>|array<int, class-string<Action>>  $actions
+     */
+    protected function register(Instrumentation $instrument, Closure|string|array $actions, ?Closure $callback): static
+    {
         if (is_null($callback) && $actions instanceof Closure) {
-            $this->logsCallback = $actions;
-            $this->recordMainActionLogs = true;
+            $instrument->callback = $actions;
+            $instrument->wrapMainAction = true;
 
             return $this;
         }
@@ -221,12 +193,12 @@ class Testable
 
         $actions = is_array($actions) ? $actions : [$actions];
 
-        $this->actionsToRecordLogs = array_map(
+        $instrument->actions = array_map(
             fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
-        $this->logsCallback = $callback;
+        $instrument->callback = $callback;
 
         return $this;
     }
@@ -239,41 +211,27 @@ class Testable
         $this->handleOnly();
         $this->remakeActionForOnly();
 
-        $this->interceptProfiles();
-        $this->interceptDatabaseCalls();
-        $this->interceptLogs();
+        $this->intercept();
 
         $execute = function () use ($args): mixed {
             return $this->action->handle(...$args);
         };
 
-        // Wrap the execution innermost to outermost: profiling measures only
-        // the action itself, while query and log recording wrap around it.
-        if ($this->profileMainAction) {
-            $execute = function () use ($execute): mixed {
-                $listener = new ProfileListener($this->action, $this->action);
-                $result = $listener->listen($execute);
-                $this->addProfile($listener->getProfile());
+        // Wrap the execution innermost to outermost. The descriptors are
+        // ordered profile, queries, logs, so profiling ends up innermost
+        // (measuring only the action itself) with query and log recording
+        // wrapped around it.
+        foreach ($this->instruments as $instrument) {
+            if (! $instrument->wrapMainAction) {
+                continue;
+            }
 
-                return $result;
-            };
-        }
+            $inner = $execute;
 
-        if ($this->recordMainActionDbCalls) {
-            $execute = function () use ($execute): mixed {
-                $listener = new QueryListener($this->action::class);
-                $result = $listener->listen($execute);
-                $this->addQueries($listener->getQueries());
-
-                return $result;
-            };
-        }
-
-        if ($this->recordMainActionLogs) {
-            $execute = function () use ($execute): mixed {
-                $listener = new LogListener($this->action::class);
-                $result = $listener->listen($execute);
-                $this->addLogs($listener->getLogs());
+            $execute = function () use ($inner, $instrument): mixed {
+                $listener = ($instrument->createListener)($this->action, $this->action);
+                $result = $listener->listen($inner);
+                $instrument->collect(($instrument->readResults)($listener));
 
                 return $result;
             };
@@ -285,16 +243,8 @@ class Testable
             $this->restoreContainer();
         }
 
-        if (isset($this->profilesCallback)) {
-            ($this->profilesCallback)(collect($this->profiledActions));
-        }
-
-        if (isset($this->dbCallsCallback)) {
-            ($this->dbCallsCallback)(collect($this->recordedDbCalls));
-        }
-
-        if (isset($this->logsCallback)) {
-            ($this->logsCallback)(collect($this->recordedLogs));
+        foreach ($this->instruments as $instrument) {
+            $instrument->report();
         }
 
         return $result;
@@ -305,11 +255,7 @@ class Testable
      */
     public function addQueries(array $queries): void
     {
-        if (empty($queries)) {
-            return;
-        }
-
-        $this->recordedDbCalls = array_merge($this->recordedDbCalls, $queries);
+        $this->instruments['queries']->collect($queries);
     }
 
     /**
@@ -317,66 +263,37 @@ class Testable
      */
     public function addLogs(array $logs): void
     {
-        if (empty($logs)) {
-            return;
-        }
-
-        $this->recordedLogs = array_merge($this->recordedLogs, $logs);
+        $this->instruments['logs']->collect($logs);
     }
 
     public function addProfile(Profile $profile): void
     {
-        $this->profiledActions[] = $profile;
+        $this->instruments['profile']->collect([$profile]);
     }
 
-    protected function interceptProfiles(): void
+    /**
+     * Bind container proxies for every nested action registered across all
+     * instrumentation features, so resolving one of them during the run is
+     * recorded through that feature's listener.
+     */
+    protected function intercept(): void
     {
-        foreach ($this->actionsToBeProfiled as $actionToBeProfiled) {
-            $this->bindProxyWrapper($actionToBeProfiled, function (Action $action) use ($actionToBeProfiled): object {
-                // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createProxyClass($actionToBeProfiled);
-                $config = new ProxyConfiguration(
-                    fn (Action $action, Action $eventSource) => new ProfileListener($action, $eventSource),
-                    fn (Testable $testable, Profile $profile) => $testable->addProfile($profile),
-                    fn (ProfileListener $listener) => $listener->getProfile()
-                );
+        foreach ($this->instruments as $instrument) {
+            foreach ($instrument->actions as $actionClass) {
+                $this->bindProxyWrapper($actionClass, function (Action $action) use ($actionClass, $instrument): object {
+                    // Use the original action class (the resolved action might already be a proxy)
+                    $proxyClass = $this->createProxyClass($actionClass);
+                    $config = new ProxyConfiguration(
+                        $instrument->createListener,
+                        static function (Testable $testable, array $results) use ($instrument): void {
+                            $instrument->collect($results);
+                        },
+                        $instrument->readResults,
+                    );
 
-                return new $proxyClass($this, $action, $config);
-            });
-        }
-    }
-
-    protected function interceptDatabaseCalls(): void
-    {
-        foreach ($this->actionsToRecordDbCalls as $actionToRecordDbCalls) {
-            $this->bindProxyWrapper($actionToRecordDbCalls, function (Action $action) use ($actionToRecordDbCalls): object {
-                // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createProxyClass($actionToRecordDbCalls);
-                $config = new ProxyConfiguration(
-                    fn (Action $action, Action $eventSource) => new QueryListener($action::class),
-                    fn (Testable $testable, array $queries) => $testable->addQueries($queries),
-                    fn (QueryListener $listener) => $listener->getQueries()
-                );
-
-                return new $proxyClass($this, $action, $config);
-            });
-        }
-    }
-
-    protected function interceptLogs(): void
-    {
-        foreach ($this->actionsToRecordLogs as $actionToRecordLogs) {
-            $this->bindProxyWrapper($actionToRecordLogs, function (Action $action) use ($actionToRecordLogs): object {
-                // Use the original action class (the resolved action might already be a proxy)
-                $proxyClass = $this->createProxyClass($actionToRecordLogs);
-                $config = new ProxyConfiguration(
-                    fn (Action $action, Action $eventSource) => new LogListener($action::class),
-                    fn (Testable $testable, array $logs) => $testable->addLogs($logs),
-                    fn (LogListener $listener) => $listener->getLogs()
-                );
-
-                return new $proxyClass($this, $action, $config);
-            });
+                    return new $proxyClass($this, $action, $config);
+                });
+            }
         }
     }
 

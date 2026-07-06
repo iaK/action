@@ -17,6 +17,7 @@ All notable changes to `laravel-action` will be documented in this file.
 - `only()` now also mocks constructor-injected child actions, not just actions resolved during `handle()`.
 - Auto-mocked actions return a zero value matching their declared `handle()` return type (`''`, `0`, `false`, `[]`) instead of `null`.
 - Declared the runtime dependencies (`illuminate/support`, `illuminate/database`, `monolog/monolog`, `nesbot/carbon`) and suggested `mockery/mockery` for the testing helpers.
+- The `profile()`/`queries()`/`logs()` test instruments now share one generic `Instrumentation` descriptor internally instead of three copies of the registration, interception and collection machinery — groundwork for future instruments.
 
 **Bug fixes**
 
