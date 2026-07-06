@@ -102,6 +102,10 @@ trait HandlesEvents
     /**
      * Cache of whether a given class uses the HandlesEvents trait, keyed by class name
      *
+     * Static trait properties are duplicated per using class but shared with
+     * subclasses via self::, so entries must stay keyed by the runtime class
+     * ($object::class) rather than self::class.
+     *
      * @var array<class-string, bool>
      */
     protected static array $usesHandlesEventsCache = [];
@@ -132,6 +136,11 @@ trait HandlesEvents
 
     /**
      * Cache of resolved allowed events, keyed by class name
+     *
+     * Storage is shared across the inheritance subtree via self::, so a subclass
+     * (or eval'd proxy) without its own #[EmitsEvents] must still be keyed by its
+     * own runtime class (static::class) even though it caches its parent's
+     * events - otherwise its fallback would overwrite the parent's own entry.
      *
      * @var array<class-string, array<int, string>>
      */

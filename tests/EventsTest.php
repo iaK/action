@@ -3,6 +3,7 @@
 use Iak\Action\EmitsEvents;
 use Iak\Action\HandlesEvents;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\ClosureActionChild;
 use Illuminate\Container\Container;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Event;
@@ -144,6 +145,37 @@ describe('HandlesEvents Trait', function () {
         $events = $action->getAllowedEvents();
 
         expect($events)->toBe(['test.event.a', 'test.event.b']);
+    });
+
+    it('caches allowed events per class without leaking the parent fallback across classes', function () {
+        // ClosureActionChild has no #[EmitsEvents] attribute of its own, so
+        // getAllowedEvents() falls back to reading its parent's (ClosureAction's)
+        // attribute - but the resolved value must be cached under the child's own
+        // class, never under the parent's.
+        $parent = ClosureAction::make();
+        $child = ClosureActionChild::make();
+
+        $expected = ['test.event.a', 'test.event.b'];
+
+        // Interleave cold and warm calls in both orders - no call here should
+        // ever hit the other class's cache entry.
+        expect($child->getAllowedEvents())->toBe($expected);
+        expect($parent->getAllowedEvents())->toBe($expected);
+        expect($parent->getAllowedEvents())->toBe($expected);
+        expect($child->getAllowedEvents())->toBe($expected);
+        expect($child->getAllowedEvents())->toBe($expected);
+        expect($parent->getAllowedEvents())->toBe($expected);
+
+        // Confirm both classes actually resolved to distinct cache entries,
+        // rather than the child's fallback having been (mis)cached onto the
+        // parent's key or vice versa.
+        $reflection = new ReflectionClass(ClosureAction::class);
+        $property = $reflection->getProperty('allowedEventsCache');
+        $property->setAccessible(true);
+        $cache = $property->getValue();
+
+        expect($cache[ClosureAction::class])->toBe($expected);
+        expect($cache[ClosureActionChild::class])->toBe($expected);
     });
 
     it('cleanup on destruct', function () {
