@@ -148,7 +148,7 @@ class Testable
         $actions = is_array($actions) ? $actions : [$actions];
 
         $this->actionsToBeProfiled = array_map(
-            fn (mixed $action): string => $this->resolveActionClass($action),
+            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
@@ -181,7 +181,7 @@ class Testable
         $actions = is_array($actions) ? $actions : [$actions];
 
         $this->actionsToRecordDbCalls = array_map(
-            fn (mixed $action): string => $this->resolveActionClass($action),
+            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
@@ -213,7 +213,7 @@ class Testable
         $actions = is_array($actions) ? $actions : [$actions];
 
         $this->actionsToRecordLogs = array_map(
-            fn (mixed $action): string => $this->resolveActionClass($action),
+            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
@@ -548,6 +548,24 @@ class Testable
             $name = is_string($class) ? $class : get_debug_type($class);
 
             throw new InvalidArgumentException("The class or alias {$name} is not bound to the container");
+        }
+
+        return $class;
+    }
+
+    /**
+     * Validate that an action class can be proxied for profiling or recording
+     *
+     * @return class-string<Action>
+     */
+    protected function resolveProxyableActionClass(mixed $class): string
+    {
+        $class = $this->resolveActionClass($class);
+
+        if ((new \ReflectionClass($class))->isFinal()) {
+            throw new InvalidArgumentException(
+                "Cannot profile or record {$class}: final classes cannot be proxied. Remove the final keyword to instrument this action."
+            );
         }
 
         return $class;

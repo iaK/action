@@ -131,6 +131,20 @@ describe('Testable', function () {
             expect($result)->toBe('');
         });
 
+        it('throws a clear exception when proxying a final action class', function () {
+            expect(fn () => ClosureAction::test()
+                ->profile([\Iak\Action\Tests\TestClasses\FinalAction::class], fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+
+            expect(fn () => ClosureAction::test()
+                ->queries(\Iak\Action\Tests\TestClasses\FinalAction::class, fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+
+            expect(fn () => ClosureAction::test()
+                ->logs(\Iak\Action\Tests\TestClasses\FinalAction::class, fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+        });
+
         it('can use only method with array parameter', function () {
             ClosureAction::test()
                 ->only([ClosureAction::class, OtherClosureAction::class])
