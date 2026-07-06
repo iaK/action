@@ -70,6 +70,8 @@ class Testable
 
     protected bool $onlyHookRegistered = false;
 
+    protected bool $resolvingMainAction = false;
+
     /**
      * Mock specific actions, preventing them from executing their real
      * handle() method. All other actions execute normally.
@@ -235,6 +237,7 @@ class Testable
     public function handle(mixed ...$args): mixed
     {
         $this->handleOnly();
+        $this->remakeActionForOnly();
 
         $this->interceptProfiles();
         $this->interceptDatabaseCalls();
@@ -555,7 +558,23 @@ class Testable
                 return;
             }
 
+            if ($abstract === $testable->action::class) {
+                return;
+            }
+
             if (in_array($abstract, $testable->only, true)) {
+                return;
+            }
+
+            // While the action under test is re-resolved, mock its
+            // constructor-injected dependencies: no action instance is on the
+            // call stack yet, so the backtrace inspection below cannot apply
+            if ($testable->resolvingMainAction) {
+                $abstract::fake()
+                    ->shouldReceive('handle')
+                    ->withAnyArgs()
+                    ->andReturn($testable->defaultHandleReturnValue($abstract));
+
                 return;
             }
 
@@ -576,6 +595,26 @@ class Testable
                 break;
             }
         });
+    }
+
+    /**
+     * Re-resolve the action under test so that constructor-injected child
+     * actions pass through the only() hook. The action given to test() was
+     * resolved before the hook existed, so its dependencies are real.
+     */
+    protected function remakeActionForOnly(): void
+    {
+        if (empty($this->only)) {
+            return;
+        }
+
+        $this->resolvingMainAction = true;
+
+        try {
+            $this->action = $this->action::class::make();
+        } finally {
+            $this->resolvingMainAction = false;
+        }
     }
 
     /**

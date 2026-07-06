@@ -171,6 +171,16 @@ describe('Testable', function () {
             expect($resolved)->not->toBeInstanceOf(MockInterface::class);
         });
 
+        it('auto-mocks constructor-injected child actions with only()', function () {
+            $result = \Iak\Action\Tests\TestClasses\InjectingAction::test()
+                ->only(\Iak\Action\Tests\TestClasses\InjectingAction::class)
+                ->handle();
+
+            // The injected TypedReturnAction must be mocked (zero value),
+            // not the real implementation returning 'typed'
+            expect($result)->toBe('');
+        });
+
         it('can use only method with array parameter', function () {
             ClosureAction::test()
                 ->only([ClosureAction::class, OtherClosureAction::class])
