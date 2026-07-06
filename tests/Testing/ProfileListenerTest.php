@@ -266,15 +266,19 @@ describe('ProfileListener', function () {
         $event = 'action.record_memory.'.spl_object_hash($action);
 
         $profiler = new ProfileListener($action);
+        $probe = WeakReference::create($profiler);
 
-        expect(Event::hasListeners($event))->toBeTrue();
+        // getRawListeners() is used instead of hasListeners(): the latter
+        // also matches unrelated wildcard listeners
+        expect(Event::getRawListeners())->toHaveKey($event);
 
         // A profiler that is constructed but never run must not pin itself
         // in the dispatcher forever
         unset($profiler);
         gc_collect_cycles();
 
-        expect(Event::hasListeners($event))->toBeFalse();
+        expect($probe->get())->toBeNull();
+        expect(Event::getRawListeners())->not->toHaveKey($event);
     });
 
     it('stops the timers before cleaning up its listeners', function () {
