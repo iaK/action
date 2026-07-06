@@ -3,7 +3,10 @@
 use Iak\Action\EmitsEvents;
 use Iak\Action\HandlesEvents;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Illuminate\Container\Container;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Facade;
 
 // EmitsEvents Attribute Tests
 describe('EmitsEvents Attribute', function () {
@@ -29,24 +32,24 @@ describe('HandlesEvents Trait', function () {
         // destructed at that moment must not crash.
         $action = ClosureAction::make();
 
-        $originalApp = \Illuminate\Support\Facades\Facade::getFacadeApplication();
-        $originalContainer = \Illuminate\Container\Container::getInstance();
+        $originalApp = Facade::getFacadeApplication();
+        $originalContainer = Container::getInstance();
 
-        $flushed = new \Illuminate\Foundation\Application;
+        $flushed = new Application;
         $flushed->flush();
 
         // Creating an Application hijacks Container::$instance - restore it so
         // only the facade root diverges, as happens during test teardown.
-        \Illuminate\Container\Container::setInstance($originalContainer);
-        \Illuminate\Support\Facades\Facade::clearResolvedInstances();
-        \Illuminate\Support\Facades\Facade::setFacadeApplication($flushed);
+        Container::setInstance($originalContainer);
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication($flushed);
 
         try {
             unset($action);
             gc_collect_cycles();
         } finally {
-            \Illuminate\Support\Facades\Facade::setFacadeApplication($originalApp);
-            \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+            Facade::setFacadeApplication($originalApp);
+            Facade::clearResolvedInstances();
         }
 
         expect(true)->toBeTrue();

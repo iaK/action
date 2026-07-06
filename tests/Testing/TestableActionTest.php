@@ -3,6 +3,8 @@
 use Iak\Action\Testing\Results\Memory;
 use Iak\Action\Testing\Testable;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\FinalAction;
+use Iak\Action\Tests\TestClasses\InjectingAction;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
 use Iak\Action\Tests\TestClasses\TypedReturnAction;
@@ -133,15 +135,15 @@ describe('Testable', function () {
 
         it('throws a clear exception when proxying a final action class', function () {
             expect(fn () => ClosureAction::test()
-                ->profile([\Iak\Action\Tests\TestClasses\FinalAction::class], fn () => null))
+                ->profile([FinalAction::class], fn () => null))
                 ->toThrow(InvalidArgumentException::class, 'final');
 
             expect(fn () => ClosureAction::test()
-                ->queries(\Iak\Action\Tests\TestClasses\FinalAction::class, fn () => null))
+                ->queries(FinalAction::class, fn () => null))
                 ->toThrow(InvalidArgumentException::class, 'final');
 
             expect(fn () => ClosureAction::test()
-                ->logs(\Iak\Action\Tests\TestClasses\FinalAction::class, fn () => null))
+                ->logs(FinalAction::class, fn () => null))
                 ->toThrow(InvalidArgumentException::class, 'final');
         });
 
@@ -172,8 +174,8 @@ describe('Testable', function () {
         });
 
         it('auto-mocks constructor-injected child actions with only()', function () {
-            $result = \Iak\Action\Tests\TestClasses\InjectingAction::test()
-                ->only(\Iak\Action\Tests\TestClasses\InjectingAction::class)
+            $result = InjectingAction::test()
+                ->only(InjectingAction::class)
                 ->handle();
 
             // The injected TypedReturnAction must be mocked (zero value),
