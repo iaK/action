@@ -110,7 +110,7 @@ describe('Profile Feature', function () {
                 expect($string)->toContain('ms');
 
                 // Memory info should be included if memory was actually used
-                if ($profile->memoryUsed('B') > 0 || $profile->peakMemory > 0) {
+                if ($profile->memoryUsed()->bytes() > 0 || $profile->peakMemory > 0) {
                     expect($string)->toContain('memory:');
                     expect($string)->toContain('peak:');
                 }

@@ -352,7 +352,7 @@ it('profiles action performance', function () {
             expect($profiles)->toHaveCount(1);
             expect($profiles[0]->class)->toBe(ProcessOrderAction::class);
             expect($profiles[0]->duration()->totalMilliseconds)->toBeLessThan(100);
-            expect($profiles[0]->memoryUsed())->toBeGreaterThan(0);
+            expect($profiles[0]->memoryUsed()->bytes())->toBeGreaterThan(0);
         })
         ->handle($orderData);
 });

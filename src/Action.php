@@ -9,7 +9,7 @@ use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
 
 /**
- * @method mixed handle(...$args) Execute the action with the given arguments. This method must be implemented by concrete action classes.
+ * @method mixed handle(mixed ...$args) Execute the action with the given arguments. This method must be implemented by concrete action classes.
  */
 abstract class Action
 {
@@ -36,11 +36,18 @@ abstract class Action
 
     /**
      * Create a mock instance of the action for testing
+     *
+     * @return MockInterface&static
      */
     public static function fake(?string $alias = null): MockInterface|LegacyMockInterface
     {
         // https://stackoverflow.com/questions/76101686/mocking-static-method-in-same-class-mockery-laravel9
         $mock = Mockery::mock(static::class);
+
+        if (! $mock instanceof static) {
+            throw new \RuntimeException('Failed to create a mock of '.static::class);
+        }
+
         app()->offsetSet($alias ?? static::class, $mock);
 
         return $mock;
@@ -48,6 +55,9 @@ abstract class Action
 
     /**
      * Create a testable instance of the action
+     *
+     * @param  (callable(Testable<static>): void)|null  $callback
+     * @return Testable<static>
      */
     public static function test(?callable $callback = null): Testable
     {
