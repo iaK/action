@@ -22,6 +22,36 @@ describe('EmitsEvents Attribute', function () {
 
 // HandlesEvents Trait Tests
 describe('HandlesEvents Trait', function () {
+    it('survives destruction while facades point at a flushed application', function () {
+        // Between two test cases the current container and the facade root can
+        // diverge: app() already points at the next (booting) application while
+        // the Event facade still points at the previous, flushed one. An action
+        // destructed at that moment must not crash.
+        $action = ClosureAction::make();
+
+        $originalApp = \Illuminate\Support\Facades\Facade::getFacadeApplication();
+        $originalContainer = \Illuminate\Container\Container::getInstance();
+
+        $flushed = new \Illuminate\Foundation\Application;
+        $flushed->flush();
+
+        // Creating an Application hijacks Container::$instance - restore it so
+        // only the facade root diverges, as happens during test teardown.
+        \Illuminate\Container\Container::setInstance($originalContainer);
+        \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+        \Illuminate\Support\Facades\Facade::setFacadeApplication($flushed);
+
+        try {
+            unset($action);
+            gc_collect_cycles();
+        } finally {
+            \Illuminate\Support\Facades\Facade::setFacadeApplication($originalApp);
+            \Illuminate\Support\Facades\Facade::clearResolvedInstances();
+        }
+
+        expect(true)->toBeTrue();
+    });
+
     it('can listen for events', function () {
         $action = ClosureAction::make();
         $callback = function ($data) {
