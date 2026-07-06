@@ -5,6 +5,7 @@ use Iak\Action\Testing\Testable;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Iak\Action\Tests\TestClasses\TypedReturnAction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -105,6 +106,29 @@ describe('Testable', function () {
                 });
 
             expect($result)->toBe('Mocked hello, World! Mocked again!');
+        });
+
+        it('can proxy actions with a typed handle() signature', function () {
+            $result = ClosureAction::test()
+                ->profile([TypedReturnAction::class], function (Collection $profiles) {
+                    expect($profiles)->toHaveCount(1);
+                })
+                ->handle(function () {
+                    return TypedReturnAction::make()->handle('!');
+                });
+
+            expect($result)->toBe('typed!');
+        });
+
+        it('can auto-mock actions with a typed handle() signature using only', function () {
+            $result = ClosureAction::test()
+                ->only(ClosureAction::class)
+                ->handle(function () {
+                    return TypedReturnAction::make()->handle();
+                });
+
+            // The auto-mock returns the zero value for the declared return type
+            expect($result)->toBe('');
         });
 
         it('can use only method with array parameter', function () {

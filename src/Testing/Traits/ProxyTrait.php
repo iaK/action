@@ -30,10 +30,13 @@ trait ProxyTrait
     }
 
     /**
+     * Instrumented replacement for handle(). The generated proxy class
+     * defines a handle() override matching the action's own signature and
+     * delegates here.
+     *
      * @param  mixed  ...$args
-     * @return mixed
      */
-    public function handle(...$args)
+    protected function proxyHandle(...$args): mixed
     {
         // Create listener using the factory callable from configuration
         $listener = ($this->config->createListener)($this->action, $this);

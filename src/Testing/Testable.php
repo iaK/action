@@ -425,15 +425,64 @@ class Testable
 
         // Check if class already exists
         if (! class_exists($proxyClass)) {
+            // Mirror the action's own return type so the override stays
+            // compatible with typed handle() signatures
+            $type = $this->handleReturnType($actionClass);
+            $returnDeclaration = $type === null ? '' : ': '.$type;
+            $delegate = $type instanceof \ReflectionNamedType && in_array($type->getName(), ['void', 'never'], true)
+                ? '$this->proxyHandle(...$args);'
+                : 'return $this->proxyHandle(...$args);';
+
             eval(<<<PHP
                 final class $proxyClass extends $fqcn
                 {
                     use \\Iak\\Action\\Testing\\Traits\\ProxyTrait;
+
+                    public function handle(...\$args)$returnDeclaration
+                    {
+                        $delegate
+                    }
                 }
             PHP);
         }
 
         return $this->ensureClassExists($proxyClass);
+    }
+
+    /**
+     * @param  class-string  $actionClass
+     */
+    protected function handleReturnType(string $actionClass): ?\ReflectionType
+    {
+        if (! method_exists($actionClass, 'handle')) {
+            return null;
+        }
+
+        return (new \ReflectionMethod($actionClass, 'handle'))->getReturnType();
+    }
+
+    /**
+     * Zero value matching the action's declared handle() return type, so
+     * auto-mocked actions do not violate their own signatures when invoked
+     *
+     * @param  class-string<Action>  $actionClass
+     */
+    protected function defaultHandleReturnValue(string $actionClass): mixed
+    {
+        $type = $this->handleReturnType($actionClass);
+
+        if (! $type instanceof \ReflectionNamedType || $type->allowsNull()) {
+            return null;
+        }
+
+        return match ($type->getName()) {
+            'string' => '',
+            'int' => 0,
+            'float' => 0.0,
+            'bool' => false,
+            'array', 'iterable' => [],
+            default => null,
+        };
     }
 
     /**
@@ -478,18 +527,10 @@ class Testable
                     continue;
                 }
 
-                // $abstract::fake()->shouldReceive('handle');
-                $mockName = 'Mock_'.md5($abstract.spl_object_id($this));
-                eval(<<<PHP
-                    class $mockName extends $abstract {
-                        public function handle(...\$args) {}
-                    };
-                PHP);
-
-                $mock = Mockery::mock($mockName);
-                $mock->shouldReceive('handle')->withAnyArgs()->andReturn(null);
-
-                app()->offsetSet($abstract, $mock);
+                $abstract::fake()
+                    ->shouldReceive('handle')
+                    ->withAnyArgs()
+                    ->andReturn($this->defaultHandleReturnValue($abstract));
 
                 break;
             }
