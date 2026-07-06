@@ -16,6 +16,55 @@ abstract class Action
     use HandlesEvents;
 
     /**
+     * When true, the mock-binding test helpers are allowed to run outside
+     * test/local environments. Toggled explicitly via allowTestHelpers().
+     */
+    protected static bool $allowTestHelpers = false;
+
+    /**
+     * Opt the mock-binding test helpers (fake(), only(), without(), except())
+     * into running outside test/local environments.
+     *
+     * The flag is process-wide; pass false to restore the guarded default.
+     */
+    public static function allowTestHelpers(bool $allow = true): void
+    {
+        static::$allowTestHelpers = $allow;
+    }
+
+    /**
+     * Fail loudly when a mock-binding helper is used outside a test context.
+     *
+     * These helpers replace real actions with Mockery mocks in the container;
+     * a forgotten call in staging/production (worst of all under Octane, where
+     * the swap outlives the request) would silently return fake data. The
+     * guard turns that fail-silent-wrong into a fail-loud with instructions.
+     *
+     * @internal Called by Action::fake() and the Testable mock helpers.
+     */
+    public static function guardTestHelpers(string $helper): void
+    {
+        if (static::$allowTestHelpers) {
+            return;
+        }
+
+        // Resolve the app from the container (matching the container-access
+        // style used elsewhere) rather than a facade.
+        $app = app();
+
+        if ($app->runningUnitTests() || $app->environment('local', 'testing')) {
+            return;
+        }
+
+        throw new \RuntimeException(
+            "{$helper} is a testing-only helper: it binds Mockery mocks into the container "
+            ."and cannot run in the [{$app->environment()}] environment, where it would silently "
+            .'replace real actions with mocks. Call it only from your test suite, or opt in '
+            .'explicitly with Action::allowTestHelpers().'
+        );
+    }
+
+    /**
      * Record memory usage at a specific point in the action
      */
     public function recordMemory(string $name): void
@@ -41,6 +90,8 @@ abstract class Action
      */
     public static function fake(?string $alias = null): MockInterface|LegacyMockInterface
     {
+        static::guardTestHelpers('Action::fake()');
+
         // https://stackoverflow.com/questions/76101686/mocking-static-method-in-same-class-mockery-laravel9
         $mock = Mockery::mock(static::class);
 

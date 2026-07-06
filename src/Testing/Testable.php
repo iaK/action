@@ -70,6 +70,8 @@ class Testable
      */
     public function without(string|object|array $classes): static
     {
+        Action::guardTestHelpers('Testable::without()');
+
         $classes = is_array($classes) ? $classes : [$classes];
 
         foreach ($classes as $key => $class) {
@@ -101,6 +103,8 @@ class Testable
      */
     public function except(string|object|array $classes): static
     {
+        Action::guardTestHelpers('Testable::except()');
+
         return $this->without($classes);
     }
 
@@ -112,6 +116,8 @@ class Testable
      */
     public function only(string|array $classes): static
     {
+        Action::guardTestHelpers('Testable::only()');
+
         $classes = is_array($classes) ? $classes : [$classes];
 
         $this->only = array_map(

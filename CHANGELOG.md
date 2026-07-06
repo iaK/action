@@ -6,6 +6,7 @@ All notable changes to `laravel-action` will be documented in this file.
 
 **Breaking changes**
 
+- The mock-binding test helpers — `Action::fake()` and `Testable::only()`/`without()`/`except()` — now throw a `RuntimeException` when used outside a test context (`runningUnitTests()` or the `local`/`testing` environments), instead of silently binding mocks into the container. A forgotten helper in staging/production previously replaced real actions with mocks (worst under Octane). To profile or debug in production, use the ungated observability helpers (`test()->profile()/queries()/logs()`); to deliberately bind mocks outside a test environment, opt in with `Action::allowTestHelpers()`.
 - `Profile::memoryUsed()`, `startMemory()`, `endMemory()` and `peakMemory()` no longer take a unit argument and now return a `MemorySize` value object. Use `->bytes()`, `->in('KB')` or `->format()` on the result. This also fixes fractional unit conversions being silently truncated to integers.
 - `Memory::formattedMemory()` was replaced by `Memory::size()`, returning a `MemorySize`.
 - `MemoryFormatter` was replaced by the `MemorySize` value object.
