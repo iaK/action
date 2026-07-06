@@ -131,13 +131,26 @@ trait HandlesEvents
     }
 
     /**
+     * Cache of resolved allowed events, keyed by class name
+     *
+     * @var array<class-string, array<int, string>>
+     */
+    protected static array $allowedEventsCache = [];
+
+    /**
      * Get allowed events declared via #[EmitsEvents(...)]
      *
      * @return array<int, string>
      */
     public function getAllowedEvents(): array
     {
-        $reflection = new \ReflectionClass(static::class);
+        $class = static::class;
+
+        if (isset(self::$allowedEventsCache[$class])) {
+            return self::$allowedEventsCache[$class];
+        }
+
+        $reflection = new \ReflectionClass($class);
         $attributes = $reflection->getAttributes(EmitsEvents::class);
 
         // If no attributes found, check parent class (for proxy classes)
@@ -146,10 +159,10 @@ trait HandlesEvents
         }
 
         if (empty($attributes)) {
-            return [];
+            return self::$allowedEventsCache[$class] = [];
         }
 
-        return $attributes[0]->newInstance()->events;
+        return self::$allowedEventsCache[$class] = $attributes[0]->newInstance()->events;
     }
 
     /**
