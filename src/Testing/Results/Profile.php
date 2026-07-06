@@ -3,7 +3,6 @@
 namespace Iak\Action\Testing\Results;
 
 use Carbon\CarbonInterval;
-use Iak\Action\Testing\MemoryFormatter;
 
 class Profile
 {
@@ -23,48 +22,24 @@ class Profile
         return CarbonInterval::microseconds(($this->end - $this->start) * 1_000_000)->cascade();
     }
 
-    public function memoryUsed(?string $unit = null): int|string
+    public function memoryUsed(): MemorySize
     {
-        $formatter = new MemoryFormatter($this->endMemory - $this->startMemory);
-
-        if ($unit === null) {
-            return $formatter->formatBytes();
-        }
-
-        return $formatter->convertToUnit($unit);
+        return new MemorySize($this->endMemory - $this->startMemory);
     }
 
-    public function startMemory(?string $unit = null): int|string
+    public function startMemory(): MemorySize
     {
-        $formatter = new MemoryFormatter($this->startMemory);
-
-        if ($unit === null) {
-            return $formatter->formatBytes();
-        }
-
-        return $formatter->convertToUnit($unit);
+        return new MemorySize($this->startMemory);
     }
 
-    public function endMemory(?string $unit = null): int|string
+    public function endMemory(): MemorySize
     {
-        $formatter = new MemoryFormatter($this->endMemory);
-
-        if ($unit === null) {
-            return $formatter->formatBytes();
-        }
-
-        return $formatter->convertToUnit($unit);
+        return new MemorySize($this->endMemory);
     }
 
-    public function peakMemory(?string $unit = null): int|string
+    public function peakMemory(): MemorySize
     {
-        $formatter = new MemoryFormatter($this->peakMemory);
-
-        if ($unit === null) {
-            return $formatter->formatBytes();
-        }
-
-        return $formatter->convertToUnit($unit);
+        return new MemorySize($this->peakMemory);
     }
 
     /**

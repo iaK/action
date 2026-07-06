@@ -3,6 +3,7 @@
 use Iak\Action\Testing\LogListener;
 use Iak\Action\Testing\Results\Entry;
 use Illuminate\Support\Facades\Log;
+use Monolog\Handler\AbstractHandler;
 
 describe('LogListener', function () {
     it('can create log listener', function () {
@@ -88,6 +89,6 @@ describe('LogListener', function () {
 
         $handler = $listener->getHandler();
 
-        expect($handler)->toBeInstanceOf(\Monolog\Handler\AbstractHandler::class);
+        expect($handler)->toBeInstanceOf(AbstractHandler::class);
     });
 });

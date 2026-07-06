@@ -1,5 +1,6 @@
 <?php
 
+use Iak\Action\Testing\Testable;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Facades\Event;
 use Mockery\MockInterface;
@@ -50,18 +51,18 @@ describe('Action', function () {
     it('creates testable instance', function () {
         $testable = ClosureAction::test();
 
-        expect($testable)->toBeInstanceOf(\Iak\Action\Testing\Testable::class);
+        expect($testable)->toBeInstanceOf(Testable::class);
     });
 
     it('creates testable instance with callback', function () {
         $callbackExecuted = false;
         $testable = ClosureAction::test(function ($testable) use (&$callbackExecuted) {
             $callbackExecuted = true;
-            expect($testable)->toBeInstanceOf(\Iak\Action\Testing\Testable::class);
+            expect($testable)->toBeInstanceOf(Testable::class);
         });
 
         expect($callbackExecuted)->toBeTrue();
-        expect($testable)->toBeInstanceOf(\Iak\Action\Testing\Testable::class);
+        expect($testable)->toBeInstanceOf(Testable::class);
     });
 
     it('handles action bound with alias correctly', function () {

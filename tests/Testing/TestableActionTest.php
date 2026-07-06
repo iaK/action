@@ -180,10 +180,10 @@ describe('Testable', function () {
             try {
                 ClosureAction::test()
                     ->profile(function (Collection $profiles) {
-                        throw new \Exception('Test exception in callback');
+                        throw new Exception('Test exception in callback');
                     })
                     ->handle();
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 $exceptionThrown = true;
                 expect($e->getMessage())->toBe('Test exception in callback');
             }
@@ -197,10 +197,10 @@ describe('Testable', function () {
             try {
                 ClosureAction::test()
                     ->queries(function ($queries) {
-                        throw new \Exception('Test exception in callback');
+                        throw new Exception('Test exception in callback');
                     })
                     ->handle();
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 $exceptionThrown = true;
                 expect($e->getMessage())->toBe('Test exception in callback');
             }
@@ -214,10 +214,10 @@ describe('Testable', function () {
             try {
                 ClosureAction::test()
                     ->logs(function ($logs) {
-                        throw new \Exception('Test exception in callback');
+                        throw new Exception('Test exception in callback');
                     })
                     ->handle();
-            } catch (\Exception $e) {
+            } catch (Exception $e) {
                 $exceptionThrown = true;
                 expect($e->getMessage())->toBe('Test exception in callback');
             }

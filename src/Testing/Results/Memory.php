@@ -2,8 +2,6 @@
 
 namespace Iak\Action\Testing\Results;
 
-use Iak\Action\Testing\MemoryFormatter;
-
 class Memory
 {
     public function __construct(
@@ -12,14 +10,8 @@ class Memory
         public float $timestamp
     ) {}
 
-    public function formattedMemory(?string $unit = null): int|string
+    public function size(): MemorySize
     {
-        $formatter = new MemoryFormatter($this->memory);
-
-        if ($unit === null) {
-            return $formatter->formatBytes();
-        }
-
-        return $formatter->convertToUnit($unit);
+        return new MemorySize($this->memory);
     }
 }

@@ -140,8 +140,8 @@ describe('ProfileListener', function () {
 
         $profile = $profiler->getProfile();
         // Memory used might be 0 or positive depending on GC
-        expect($profile->memoryUsed('B'))->toBeGreaterThanOrEqual(0);
-        expect($profile->memoryUsed())->toMatch('/\d+\.?\d*\s+(B|KB|MB|GB|TB)/');
+        expect($profile->memoryUsed()->bytes())->toBeGreaterThanOrEqual(0);
+        expect($profile->memoryUsed()->format())->toMatch('/\d+\.?\d*\s+(B|KB|MB|GB|TB)/');
     });
 
     it('handles memory tracking when action throws exception', function () {
@@ -216,7 +216,7 @@ describe('ProfileListener', function () {
         expect($records)->toHaveCount(1);
         expect($records[0]->name)->toBe('test_point');
         expect($records[0]->memory)->toBeInt();
-        expect($records[0]->formattedMemory())->toBeString();
+        expect($records[0]->size()->format())->toBeString();
         expect($records[0]->timestamp)->toBeFloat();
     });
 
