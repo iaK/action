@@ -63,6 +63,13 @@ class Testable
     /** @var Closure(Collection<int, Entry>): void */
     protected Closure $logsCallback;
 
+    /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
+    protected array $replacedBindings = [];
+
+    protected bool $interceptingOnly = false;
+
+    protected bool $onlyHookRegistered = false;
+
     /**
      * Mock specific actions, preventing them from executing their real
      * handle() method. All other actions execute normally.
@@ -269,7 +276,11 @@ class Testable
             };
         }
 
-        $result = $execute();
+        try {
+            $result = $execute();
+        } finally {
+            $this->restoreContainer();
+        }
 
         if (isset($this->profilesCallback)) {
             ($this->profilesCallback)(collect($this->profiledActions));
@@ -372,6 +383,17 @@ class Testable
      */
     protected function bindProxyWrapper(string $actionClass, Closure $wrapper): void
     {
+        // Remember the original binding the first time we touch a class, so
+        // the container can be restored after handle() completes
+        if (! array_key_exists($actionClass, $this->replacedBindings)) {
+            $binding = app()->getBindings()[$actionClass] ?? null;
+
+            $this->replacedBindings[$actionClass] = $binding === null ? null : [
+                'concrete' => $binding['concrete'] ?? null,
+                'shared' => (bool) ($binding['shared'] ?? false),
+            ];
+        }
+
         // Capture the previous resolver if one exists (another feature may have already bound it)
         $previousResolver = null;
 
@@ -505,7 +527,26 @@ class Testable
             return;
         }
 
-        app()->beforeResolving(function (mixed $abstract): void {
+        $this->interceptingOnly = true;
+
+        if ($this->onlyHookRegistered) {
+            return;
+        }
+
+        $this->onlyHookRegistered = true;
+
+        // The container offers no way to remove a beforeResolving hook, so the
+        // hook holds only a weak reference and deactivates itself once the
+        // testable run has completed (or the testable is garbage collected)
+        $reference = \WeakReference::create($this);
+
+        app()->beforeResolving(function (mixed $abstract) use ($reference): void {
+            $testable = $reference->get();
+
+            if (! $testable instanceof self || ! $testable->interceptingOnly) {
+                return;
+            }
+
             if (! is_string($abstract) || ! class_exists($abstract)) {
                 return;
             }
@@ -514,27 +555,49 @@ class Testable
                 return;
             }
 
-            if (in_array($abstract, $this->only, true)) {
+            if (in_array($abstract, $testable->only, true)) {
                 return;
             }
 
             foreach (debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT) as $frame) {
-                if (! isset($frame['object']) || $frame['object'] === $this) {
+                if (! isset($frame['object']) || $frame['object'] === $testable) {
                     continue;
                 }
 
-                if (! $frame['object'] instanceof ($this->action::class)) {
+                if (! $frame['object'] instanceof ($testable->action::class)) {
                     continue;
                 }
 
                 $abstract::fake()
                     ->shouldReceive('handle')
                     ->withAnyArgs()
-                    ->andReturn($this->defaultHandleReturnValue($abstract));
+                    ->andReturn($testable->defaultHandleReturnValue($abstract));
 
                 break;
             }
         });
+    }
+
+    /**
+     * Undo the container manipulation done for this run: restore the
+     * bindings replaced by proxies and deactivate the only() hook. Mocks
+     * already bound for mocked-away actions stay in place.
+     */
+    protected function restoreContainer(): void
+    {
+        $this->interceptingOnly = false;
+
+        foreach ($this->replacedBindings as $class => $binding) {
+            app()->offsetUnset($class);
+
+            $concrete = $binding['concrete'] ?? null;
+
+            if ($concrete instanceof Closure || is_string($concrete)) {
+                app()->bind($class, $concrete, $binding['shared'] ?? false);
+            }
+        }
+
+        $this->replacedBindings = [];
     }
 
     /**

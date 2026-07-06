@@ -145,6 +145,32 @@ describe('Testable', function () {
                 ->toThrow(InvalidArgumentException::class, 'final');
         });
 
+        it('restores proxy container bindings after handle() completes', function () {
+            ClosureAction::test()
+                ->queries(OtherClosureAction::class, fn () => null)
+                ->handle(fn () => OtherClosureAction::make()->handle());
+
+            $resolved = OtherClosureAction::make();
+
+            expect($resolved)->toBeInstanceOf(OtherClosureAction::class);
+            expect(get_class($resolved))->toBe(OtherClosureAction::class);
+        });
+
+        it('stops auto-mocking after the testable run completes', function () {
+            ClosureAction::test()
+                ->only(ClosureAction::class)
+                ->handle();
+
+            // Resolving a child action inside a *plain* action run afterwards
+            // must not be intercepted by the previous testable's only() hook
+            $resolved = ClosureAction::make()->handle(function () {
+                return LogAction::make();
+            });
+
+            expect($resolved)->toBeInstanceOf(LogAction::class);
+            expect($resolved)->not->toBeInstanceOf(MockInterface::class);
+        });
+
         it('can use only method with array parameter', function () {
             ClosureAction::test()
                 ->only([ClosureAction::class, OtherClosureAction::class])
