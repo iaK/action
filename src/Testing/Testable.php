@@ -63,6 +63,15 @@ class Testable
     /** @var Closure(Collection<int, Entry>): void */
     protected Closure $logsCallback;
 
+    /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
+    protected array $replacedBindings = [];
+
+    protected bool $interceptingOnly = false;
+
+    protected bool $onlyHookRegistered = false;
+
+    protected bool $resolvingMainAction = false;
+
     /**
      * Mock specific actions, preventing them from executing their real
      * handle() method. All other actions execute normally.
@@ -87,7 +96,7 @@ class Testable
 
             $expectation = $this->resolveActionClass($class)::fake()->shouldReceive('handle');
 
-            if ($returnValue) {
+            if ($returnValue !== null) {
                 $expectation->andReturn($returnValue);
             }
         }
@@ -148,7 +157,7 @@ class Testable
         $actions = is_array($actions) ? $actions : [$actions];
 
         $this->actionsToBeProfiled = array_map(
-            fn (mixed $action): string => $this->resolveActionClass($action),
+            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
@@ -181,7 +190,7 @@ class Testable
         $actions = is_array($actions) ? $actions : [$actions];
 
         $this->actionsToRecordDbCalls = array_map(
-            fn (mixed $action): string => $this->resolveActionClass($action),
+            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
@@ -213,7 +222,7 @@ class Testable
         $actions = is_array($actions) ? $actions : [$actions];
 
         $this->actionsToRecordLogs = array_map(
-            fn (mixed $action): string => $this->resolveActionClass($action),
+            fn (mixed $action): string => $this->resolveProxyableActionClass($action),
             $actions
         );
 
@@ -228,6 +237,7 @@ class Testable
     public function handle(mixed ...$args): mixed
     {
         $this->handleOnly();
+        $this->remakeActionForOnly();
 
         $this->interceptProfiles();
         $this->interceptDatabaseCalls();
@@ -269,7 +279,11 @@ class Testable
             };
         }
 
-        $result = $execute();
+        try {
+            $result = $execute();
+        } finally {
+            $this->restoreContainer();
+        }
 
         if (isset($this->profilesCallback)) {
             ($this->profilesCallback)(collect($this->profiledActions));
@@ -372,6 +386,17 @@ class Testable
      */
     protected function bindProxyWrapper(string $actionClass, Closure $wrapper): void
     {
+        // Remember the original binding the first time we touch a class, so
+        // the container can be restored after handle() completes
+        if (! array_key_exists($actionClass, $this->replacedBindings)) {
+            $binding = app()->getBindings()[$actionClass] ?? null;
+
+            $this->replacedBindings[$actionClass] = $binding === null ? null : [
+                'concrete' => $binding['concrete'] ?? null,
+                'shared' => (bool) ($binding['shared'] ?? false),
+            ];
+        }
+
         // Capture the previous resolver if one exists (another feature may have already bound it)
         $previousResolver = null;
 
@@ -425,15 +450,64 @@ class Testable
 
         // Check if class already exists
         if (! class_exists($proxyClass)) {
+            // Mirror the action's own return type so the override stays
+            // compatible with typed handle() signatures
+            $type = $this->handleReturnType($actionClass);
+            $returnDeclaration = $type === null ? '' : ': '.$type;
+            $delegate = $type instanceof \ReflectionNamedType && in_array($type->getName(), ['void', 'never'], true)
+                ? '$this->proxyHandle(...$args);'
+                : 'return $this->proxyHandle(...$args);';
+
             eval(<<<PHP
                 final class $proxyClass extends $fqcn
                 {
                     use \\Iak\\Action\\Testing\\Traits\\ProxyTrait;
+
+                    public function handle(...\$args)$returnDeclaration
+                    {
+                        $delegate
+                    }
                 }
             PHP);
         }
 
         return $this->ensureClassExists($proxyClass);
+    }
+
+    /**
+     * @param  class-string  $actionClass
+     */
+    protected function handleReturnType(string $actionClass): ?\ReflectionType
+    {
+        if (! method_exists($actionClass, 'handle')) {
+            return null;
+        }
+
+        return (new \ReflectionMethod($actionClass, 'handle'))->getReturnType();
+    }
+
+    /**
+     * Zero value matching the action's declared handle() return type, so
+     * auto-mocked actions do not violate their own signatures when invoked
+     *
+     * @param  class-string<Action>  $actionClass
+     */
+    protected function defaultHandleReturnValue(string $actionClass): mixed
+    {
+        $type = $this->handleReturnType($actionClass);
+
+        if (! $type instanceof \ReflectionNamedType || $type->allowsNull()) {
+            return null;
+        }
+
+        return match ($type->getName()) {
+            'string' => '',
+            'int' => 0,
+            'float' => 0.0,
+            'bool' => false,
+            'array', 'iterable' => [],
+            default => null,
+        };
     }
 
     /**
@@ -456,7 +530,28 @@ class Testable
             return;
         }
 
-        app()->beforeResolving(function (mixed $abstract): void {
+        $this->interceptingOnly = true;
+
+        if ($this->onlyHookRegistered) {
+            return;
+        }
+
+        $this->onlyHookRegistered = true;
+
+        // The container offers no way to remove a beforeResolving hook, so the
+        // hook holds only a weak reference and deactivates itself once the
+        // testable run has completed (or the testable is garbage collected).
+        // The closure must be static - non-static closures bind $this even
+        // when they do not use it, which would defeat the weak reference.
+        $reference = \WeakReference::create($this);
+
+        app()->beforeResolving(static function (mixed $abstract) use ($reference): void {
+            $testable = $reference->get();
+
+            if (! $testable instanceof self || ! $testable->interceptingOnly) {
+                return;
+            }
+
             if (! is_string($abstract) || ! class_exists($abstract)) {
                 return;
             }
@@ -465,35 +560,85 @@ class Testable
                 return;
             }
 
-            if (in_array($abstract, $this->only, true)) {
+            if ($abstract === $testable->action::class) {
+                return;
+            }
+
+            if (in_array($abstract, $testable->only, true)) {
+                return;
+            }
+
+            // While the action under test is re-resolved, mock its
+            // constructor-injected dependencies: no action instance is on the
+            // call stack yet, so the backtrace inspection below cannot apply
+            if ($testable->resolvingMainAction) {
+                $abstract::fake()
+                    ->shouldReceive('handle')
+                    ->withAnyArgs()
+                    ->andReturn($testable->defaultHandleReturnValue($abstract));
+
                 return;
             }
 
             foreach (debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT) as $frame) {
-                if (! isset($frame['object']) || $frame['object'] === $this) {
+                if (! isset($frame['object']) || $frame['object'] === $testable) {
                     continue;
                 }
 
-                if (! $frame['object'] instanceof ($this->action::class)) {
+                if (! $frame['object'] instanceof ($testable->action::class)) {
                     continue;
                 }
 
-                // $abstract::fake()->shouldReceive('handle');
-                $mockName = 'Mock_'.md5($abstract.spl_object_id($this));
-                eval(<<<PHP
-                    class $mockName extends $abstract {
-                        public function handle(...\$args) {}
-                    };
-                PHP);
-
-                $mock = Mockery::mock($mockName);
-                $mock->shouldReceive('handle')->withAnyArgs()->andReturn(null);
-
-                app()->offsetSet($abstract, $mock);
+                $abstract::fake()
+                    ->shouldReceive('handle')
+                    ->withAnyArgs()
+                    ->andReturn($testable->defaultHandleReturnValue($abstract));
 
                 break;
             }
         });
+    }
+
+    /**
+     * Re-resolve the action under test so that constructor-injected child
+     * actions pass through the only() hook. The action given to test() was
+     * resolved before the hook existed, so its dependencies are real.
+     */
+    protected function remakeActionForOnly(): void
+    {
+        if (empty($this->only)) {
+            return;
+        }
+
+        $this->resolvingMainAction = true;
+
+        try {
+            $this->action = $this->action::class::make();
+        } finally {
+            $this->resolvingMainAction = false;
+        }
+    }
+
+    /**
+     * Undo the container manipulation done for this run: restore the
+     * bindings replaced by proxies and deactivate the only() hook. Mocks
+     * already bound for mocked-away actions stay in place.
+     */
+    protected function restoreContainer(): void
+    {
+        $this->interceptingOnly = false;
+
+        foreach ($this->replacedBindings as $class => $binding) {
+            app()->offsetUnset($class);
+
+            $concrete = $binding['concrete'] ?? null;
+
+            if ($concrete instanceof Closure || is_string($concrete)) {
+                app()->bind($class, $concrete, $binding['shared'] ?? false);
+            }
+        }
+
+        $this->replacedBindings = [];
     }
 
     /**
@@ -507,6 +652,24 @@ class Testable
             $name = is_string($class) ? $class : get_debug_type($class);
 
             throw new InvalidArgumentException("The class or alias {$name} is not bound to the container");
+        }
+
+        return $class;
+    }
+
+    /**
+     * Validate that an action class can be proxied for profiling or recording
+     *
+     * @return class-string<Action>
+     */
+    protected function resolveProxyableActionClass(mixed $class): string
+    {
+        $class = $this->resolveActionClass($class);
+
+        if ((new \ReflectionClass($class))->isFinal()) {
+            throw new InvalidArgumentException(
+                "Cannot profile or record {$class}: final classes cannot be proxied. Remove the final keyword to instrument this action."
+            );
         }
 
         return $class;

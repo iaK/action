@@ -241,4 +241,64 @@ describe('ProfileListener', function () {
         expect($profile->memoryRecords)->toHaveCount(1);
         expect($profile->memoryRecords[0]->name)->toBe('proxy_memory_point');
     });
+
+    it('stops recording memory events after the profiled run', function () {
+        $action = new ClosureAction;
+        $proxy = new ClosureAction;
+
+        $actionEvent = 'action.record_memory.'.spl_object_hash($action);
+        $proxyEvent = 'action.record_memory.'.spl_object_hash($proxy);
+
+        $profiler = new ProfileListener($action, $proxy);
+
+        $profiler->listen(fn () => 'result');
+
+        // Listeners must not outlive the profiled run: spl_object_hash values
+        // are recycled, so stale listeners can fire for unrelated objects
+        Event::dispatch($actionEvent, ['stale-action-point']);
+        Event::dispatch($proxyEvent, ['stale-proxy-point']);
+
+        expect($profiler->getProfile()->memoryRecords)->toHaveCount(0);
+    });
+
+    it('cleans up listeners when a never-run profiler is garbage collected', function () {
+        $action = new ClosureAction;
+        $event = 'action.record_memory.'.spl_object_hash($action);
+
+        $profiler = new ProfileListener($action);
+        $probe = WeakReference::create($profiler);
+
+        // getRawListeners() is used instead of hasListeners(): the latter
+        // also matches unrelated wildcard listeners
+        expect(Event::getRawListeners())->toHaveKey($event);
+
+        // A profiler that is constructed but never run must not pin itself
+        // in the dispatcher forever
+        unset($profiler);
+        gc_collect_cycles();
+
+        expect($probe->get())->toBeNull();
+        expect(Event::getRawListeners())->not->toHaveKey($event);
+    });
+
+    it('stops the timers before cleaning up its listeners', function () {
+        $action = new ClosureAction;
+
+        $profiler = new class($action) extends ProfileListener
+        {
+            public ?bool $measurementDoneWhenCleaned = null;
+
+            protected function removeListeners(): void
+            {
+                // The profile must not include the profiler's own teardown
+                $this->measurementDoneWhenCleaned = isset($this->end);
+
+                parent::removeListeners();
+            }
+        };
+
+        $profiler->listen(fn () => 'result');
+
+        expect($profiler->measurementDoneWhenCleaned)->toBeTrue();
+    });
 });

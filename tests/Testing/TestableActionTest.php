@@ -3,8 +3,11 @@
 use Iak\Action\Testing\Results\Memory;
 use Iak\Action\Testing\Testable;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\FinalAction;
+use Iak\Action\Tests\TestClasses\InjectingAction;
 use Iak\Action\Tests\TestClasses\LogAction;
 use Iak\Action\Tests\TestClasses\OtherClosureAction;
+use Iak\Action\Tests\TestClasses\TypedReturnAction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -66,6 +69,32 @@ describe('Testable', function () {
             expect($result)->toBe('Mocked hello, World!');
         });
 
+        it('can use without method with falsy return values', function () {
+            $result = ClosureAction::test()
+                ->without([OtherClosureAction::class => false])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe(false);
+
+            $result = ClosureAction::test()
+                ->without([OtherClosureAction::class => 0])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe(0);
+
+            $result = ClosureAction::test()
+                ->without([OtherClosureAction::class => ''])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe('');
+        });
+
         it('can use without method and specify return value for several actions', function () {
             $result = ClosureAction::test()
                 ->without([
@@ -79,6 +108,79 @@ describe('Testable', function () {
                 });
 
             expect($result)->toBe('Mocked hello, World! Mocked again!');
+        });
+
+        it('can proxy actions with a typed handle() signature', function () {
+            $result = ClosureAction::test()
+                ->profile([TypedReturnAction::class], function (Collection $profiles) {
+                    expect($profiles)->toHaveCount(1);
+                })
+                ->handle(function () {
+                    return TypedReturnAction::make()->handle('!');
+                });
+
+            expect($result)->toBe('typed!');
+        });
+
+        it('can auto-mock actions with a typed handle() signature using only', function () {
+            $result = ClosureAction::test()
+                ->only(ClosureAction::class)
+                ->handle(function () {
+                    return TypedReturnAction::make()->handle();
+                });
+
+            // The auto-mock returns the zero value for the declared return type
+            expect($result)->toBe('');
+        });
+
+        it('throws a clear exception when proxying a final action class', function () {
+            expect(fn () => ClosureAction::test()
+                ->profile([FinalAction::class], fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+
+            expect(fn () => ClosureAction::test()
+                ->queries(FinalAction::class, fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+
+            expect(fn () => ClosureAction::test()
+                ->logs(FinalAction::class, fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+        });
+
+        it('restores proxy container bindings after handle() completes', function () {
+            ClosureAction::test()
+                ->queries(OtherClosureAction::class, fn () => null)
+                ->handle(fn () => OtherClosureAction::make()->handle());
+
+            $resolved = OtherClosureAction::make();
+
+            expect($resolved)->toBeInstanceOf(OtherClosureAction::class);
+            expect(get_class($resolved))->toBe(OtherClosureAction::class);
+        });
+
+        it('stops auto-mocking after the testable run completes', function () {
+            ClosureAction::test()
+                ->only(ClosureAction::class)
+                ->handle();
+
+            // Resolving a child action inside a *plain* action run afterwards
+            // must not be intercepted by the previous testable's only() hook
+            $resolved = ClosureAction::make()->handle(function () {
+                return LogAction::make();
+            });
+
+            expect($resolved)->toBeInstanceOf(LogAction::class);
+            expect($resolved)->not->toBeInstanceOf(MockInterface::class);
+        });
+
+        it('auto-mocks constructor-injected child actions with only()', function () {
+            $result = InjectingAction::test()
+                ->only(InjectingAction::class)
+                ->handle();
+
+            // The injected TypedReturnAction must be mocked (zero value),
+            // not the real implementation returning 'typed'
+            expect($result)->toBe('');
         });
 
         it('can use only method with array parameter', function () {

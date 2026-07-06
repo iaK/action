@@ -3,7 +3,10 @@
 use Iak\Action\EmitsEvents;
 use Iak\Action\HandlesEvents;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Illuminate\Container\Container;
+use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Facade;
 
 // EmitsEvents Attribute Tests
 describe('EmitsEvents Attribute', function () {
@@ -22,6 +25,36 @@ describe('EmitsEvents Attribute', function () {
 
 // HandlesEvents Trait Tests
 describe('HandlesEvents Trait', function () {
+    it('survives destruction while facades point at a flushed application', function () {
+        // Between two test cases the current container and the facade root can
+        // diverge: app() already points at the next (booting) application while
+        // the Event facade still points at the previous, flushed one. An action
+        // destructed at that moment must not crash.
+        $action = ClosureAction::make();
+
+        $originalApp = Facade::getFacadeApplication();
+        $originalContainer = Container::getInstance();
+
+        $flushed = new Application;
+        $flushed->flush();
+
+        // Creating an Application hijacks Container::$instance - restore it so
+        // only the facade root diverges, as happens during test teardown.
+        Container::setInstance($originalContainer);
+        Facade::clearResolvedInstances();
+        Facade::setFacadeApplication($flushed);
+
+        try {
+            unset($action);
+            gc_collect_cycles();
+        } finally {
+            Facade::setFacadeApplication($originalApp);
+            Facade::clearResolvedInstances();
+        }
+
+        expect(true)->toBeTrue();
+    });
+
     it('can listen for events', function () {
         $action = ClosureAction::make();
         $callback = function ($data) {

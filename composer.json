@@ -8,7 +8,7 @@
         "php",
         "package"
     ],
-    "homepage": "https://github.com/iak/action",
+    "homepage": "https://github.com/iaK/action",
     "license": "MIT",
     "authors": [
         {
@@ -19,8 +19,15 @@
     ],
     "require": {
         "php": "^8.2",
-        "spatie/laravel-package-tools": "^1.16",
-        "illuminate/contracts": "^11.0||^12.0"
+        "illuminate/contracts": "^11.0||^12.0",
+        "illuminate/database": "^11.0||^12.0",
+        "illuminate/support": "^11.0||^12.0",
+        "monolog/monolog": "^3.0",
+        "nesbot/carbon": "^2.72.2||^3.0",
+        "spatie/laravel-package-tools": "^1.16"
+    },
+    "suggest": {
+        "mockery/mockery": "Required to use Action::fake(), Action::test() and the testing helpers (^1.6)."
     },
     "require-dev": {
         "larastan/larastan": "^3.0",

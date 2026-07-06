@@ -159,11 +159,20 @@ trait HandlesEvents
 
     public function __destruct()
     {
-        // Only clean up if the application is still available
-        if (app()->bound('events')) {
-            foreach ($this->getAllowedEvents() as $event) {
-                Event::forget($this->generateEventName($event));
-            }
+        // Only clean up if this container has a booted event dispatcher. The
+        // dispatcher is resolved from the current container rather than the
+        // Event facade: during test teardown the facade can still point at a
+        // previous, flushed application where resolving 'events' throws.
+        $app = app();
+
+        if (! $app->resolved('events')) {
+            return;
+        }
+
+        $dispatcher = $app->make('events');
+
+        foreach ($this->getAllowedEvents() as $event) {
+            $dispatcher->forget($this->generateEventName($event));
         }
     }
 }
