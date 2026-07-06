@@ -260,4 +260,25 @@ describe('ProfileListener', function () {
 
         expect($profiler->getProfile()->memoryRecords)->toHaveCount(0);
     });
+
+    it('stops the timers before cleaning up its listeners', function () {
+        $action = new ClosureAction;
+
+        $profiler = new class($action) extends ProfileListener
+        {
+            public ?bool $measurementDoneWhenCleaned = null;
+
+            protected function removeListeners(): void
+            {
+                // The profile must not include the profiler's own teardown
+                $this->measurementDoneWhenCleaned = isset($this->end);
+
+                parent::removeListeners();
+            }
+        };
+
+        $profiler->listen(fn () => 'result');
+
+        expect($profiler->measurementDoneWhenCleaned)->toBeTrue();
+    });
 });

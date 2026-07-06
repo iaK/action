@@ -53,18 +53,20 @@ class ProfileListener implements Listener
 
         try {
             $result = $callback();
+
+            // Stop measuring before any cleanup so the profile only covers
+            // the callback itself
+            $this->end = microtime(true);
+            $this->endMemory = memory_get_usage(true);
+            $this->peakMemory = memory_get_peak_usage(true);
+
+            return $result;
         } finally {
             // Remove the record_memory listeners once the profiled run is
             // over: spl_object_hash values are recycled, so stale listeners
             // could otherwise fire for unrelated objects
             $this->removeListeners();
         }
-
-        $this->end = microtime(true);
-        $this->endMemory = memory_get_usage(true);
-        $this->peakMemory = memory_get_peak_usage(true);
-
-        return $result;
     }
 
     protected function removeListeners(): void
