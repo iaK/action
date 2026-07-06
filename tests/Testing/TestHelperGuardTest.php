@@ -36,10 +36,10 @@ describe('test helper guard', function () {
                 ->toContain('production')          // names the current environment
                 ->toContain('allowTestHelpers');   // names the escape hatch
         })->with([
-            'fake' => ['fake', fn () => ClosureAction::fake()],
-            'only' => ['only', fn () => ClosureAction::test()->only(OtherClosureAction::class)],
-            'without' => ['without', fn () => ClosureAction::test()->without(OtherClosureAction::class)],
-            'except' => ['except', fn () => ClosureAction::test()->except(OtherClosureAction::class)],
+            'fake' => ['Action::fake()', fn () => ClosureAction::fake()],
+            'only' => ['Testable::only()', fn () => ClosureAction::test()->only(OtherClosureAction::class)],
+            'without' => ['Testable::without()', fn () => ClosureAction::test()->without(OtherClosureAction::class)],
+            'except' => ['Testable::except()', fn () => ClosureAction::test()->except(OtherClosureAction::class)],
         ]);
 
         it('allows the mock-binding helpers when opted in via allowTestHelpers()', function () {
