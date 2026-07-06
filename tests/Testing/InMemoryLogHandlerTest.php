@@ -21,7 +21,7 @@ describe('InMemoryLogHandler', function () {
         $handler->setListener($listener);
 
         // Use reflection to verify listener was set
-        $reflection = new \ReflectionClass($handler);
+        $reflection = new ReflectionClass($handler);
         $property = $reflection->getProperty('listener');
         $property->setAccessible(true);
 

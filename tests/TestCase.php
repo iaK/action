@@ -3,6 +3,7 @@
 namespace Iak\Action\Tests;
 
 use Iak\Action\ActionServiceProvider;
+use Illuminate\Events\EventServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
 class TestCase extends Orchestra
@@ -16,7 +17,7 @@ class TestCase extends Orchestra
     {
         return [
             ActionServiceProvider::class,
-            \Illuminate\Events\EventServiceProvider::class,
+            EventServiceProvider::class,
         ];
     }
 
