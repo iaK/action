@@ -26,6 +26,8 @@ class Testable
     public function __construct(
         public Action $action
     ) {
+        // Array order defines handle()'s wrapping order: first entry innermost (profile),
+        // last outermost (logs). This ordering is pinned by tests.
         $this->instruments = [
             'profile' => new Instrumentation(
                 static fn (Action $action, Action $eventSource): ProfileListener => new ProfileListener($action, $eventSource),
@@ -143,9 +145,9 @@ class Testable
         $this->register($this->instruments['queries'], $actions, $callback);
 
         // When only a callback is given, the action under test is also
-        // registered as a nested proxy target. This is inert in practice (the
-        // action under test is executed directly, never resolved through the
-        // proxy), but it is preserved here for exact behavioral parity.
+        // registered as a nested proxy target. The binding is reachable if the
+        // action is re-resolved from the container during the run (e.g. a
+        // self-resolving action); it is preserved here for exact behavioral parity.
         if ($callback === null && $actions instanceof Closure) {
             $this->instruments['queries']->actions = [$this->action::class];
         }
@@ -283,7 +285,7 @@ class Testable
                     $proxyClass = $this->createProxyClass($actionClass);
                     $config = new ProxyConfiguration(
                         $instrument->createListener,
-                        function (Testable $testable, array $results) use ($instrument): void {
+                        static function (Testable $testable, array $results) use ($instrument): void {
                             $instrument->collect($results);
                         },
                         $instrument->readResults,
