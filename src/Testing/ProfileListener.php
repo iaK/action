@@ -39,9 +39,16 @@ class ProfileListener implements Listener
             $this->listeningTo[] = 'action.record_memory.'.spl_object_hash($eventSource);
         }
 
+        // Listen through a weak reference so the dispatcher does not keep
+        // this profiler alive: a profiler that is dropped without running
+        // must be collectable so its destructor can remove these listeners.
+        // The closure must be static - non-static closures bind $this even
+        // when they do not use it, which would defeat the weak reference.
+        $reference = \WeakReference::create($this);
+
         foreach ($this->listeningTo as $event) {
-            Event::listen($event, function (string $name) {
-                $this->recordMemory($name);
+            Event::listen($event, static function (string $name) use ($reference) {
+                $reference->get()?->recordMemory($name);
             });
         }
     }

@@ -540,10 +540,12 @@ class Testable
 
         // The container offers no way to remove a beforeResolving hook, so the
         // hook holds only a weak reference and deactivates itself once the
-        // testable run has completed (or the testable is garbage collected)
+        // testable run has completed (or the testable is garbage collected).
+        // The closure must be static - non-static closures bind $this even
+        // when they do not use it, which would defeat the weak reference.
         $reference = \WeakReference::create($this);
 
-        app()->beforeResolving(function (mixed $abstract) use ($reference): void {
+        app()->beforeResolving(static function (mixed $abstract) use ($reference): void {
             $testable = $reference->get();
 
             if (! $testable instanceof self || ! $testable->interceptingOnly) {

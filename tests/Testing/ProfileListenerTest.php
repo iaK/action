@@ -261,6 +261,22 @@ describe('ProfileListener', function () {
         expect($profiler->getProfile()->memoryRecords)->toHaveCount(0);
     });
 
+    it('cleans up listeners when a never-run profiler is garbage collected', function () {
+        $action = new ClosureAction;
+        $event = 'action.record_memory.'.spl_object_hash($action);
+
+        $profiler = new ProfileListener($action);
+
+        expect(Event::hasListeners($event))->toBeTrue();
+
+        // A profiler that is constructed but never run must not pin itself
+        // in the dispatcher forever
+        unset($profiler);
+        gc_collect_cycles();
+
+        expect(Event::hasListeners($event))->toBeFalse();
+    });
+
     it('stops the timers before cleaning up its listeners', function () {
         $action = new ClosureAction;
 
