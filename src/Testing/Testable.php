@@ -87,7 +87,7 @@ class Testable
 
             $expectation = $this->resolveActionClass($class)::fake()->shouldReceive('handle');
 
-            if ($returnValue) {
+            if ($returnValue !== null) {
                 $expectation->andReturn($returnValue);
             }
         }

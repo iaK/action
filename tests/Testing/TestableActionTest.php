@@ -66,6 +66,32 @@ describe('Testable', function () {
             expect($result)->toBe('Mocked hello, World!');
         });
 
+        it('can use without method with falsy return values', function () {
+            $result = ClosureAction::test()
+                ->without([OtherClosureAction::class => false])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe(false);
+
+            $result = ClosureAction::test()
+                ->without([OtherClosureAction::class => 0])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe(0);
+
+            $result = ClosureAction::test()
+                ->without([OtherClosureAction::class => ''])
+                ->handle(function () {
+                    return OtherClosureAction::make()->handle();
+                });
+
+            expect($result)->toBe('');
+        });
+
         it('can use without method and specify return value for several actions', function () {
             $result = ClosureAction::test()
                 ->without([
