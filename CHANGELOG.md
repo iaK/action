@@ -4,6 +4,10 @@ All notable changes to `laravel-action` will be documented in this file.
 
 ## Unreleased
 
+**New features**
+
+- Idempotent execution: `$action->idempotent($key, $ttl = null, $store = null)->handle(...)` runs the action at most once per key and returns the cached result on later calls. Keys are scoped per action class, results are stored in an envelope so a `null`/`false`/`''` result still counts as executed, only successful runs consume the key (a thrown exception leaves it free to retry), and concurrent callers are serialised with a cache lock when the store supports one. Bust an entry with `$action->forgetIdempotency($key, $store = null)`.
+
 **Breaking changes**
 
 - The mock-binding test helpers — `Action::fake()` and `Testable::only()`/`without()`/`except()` — now throw a `RuntimeException` when used outside a test context (`runningUnitTests()` or the `local`/`testing` environments), instead of silently binding mocks into the container. A forgotten helper in staging/production previously replaced real actions with mocks (worst under Octane). To profile or debug in production, use the ungated observability helpers (`test()->profile()/queries()/logs()`); to deliberately bind mocks outside a test environment, opt in with `Action::allowTestHelpers()`.
