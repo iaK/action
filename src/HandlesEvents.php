@@ -58,7 +58,7 @@ trait HandlesEvents
      */
     protected function propagateToAncestor(string $event, mixed $data): void
     {
-        $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT);
+        $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT | DEBUG_BACKTRACE_IGNORE_ARGS);
 
         array_shift($trace);
 
@@ -100,19 +100,34 @@ trait HandlesEvents
     }
 
     /**
+     * Cache of whether a given class uses the HandlesEvents trait, keyed by class name
+     *
+     * @var array<class-string, bool>
+     */
+    protected static array $usesHandlesEventsCache = [];
+
+    /**
      * Determine if the object uses the HandlesEvents trait anywhere in its class hierarchy
      */
     protected function usesHandlesEvents(object $object): bool
     {
         $class = $object::class;
 
-        do {
-            if (in_array(HandlesEvents::class, class_uses($class) ?: [], true)) {
-                return true;
-            }
-        } while ($class = get_parent_class($class));
+        if (isset(self::$usesHandlesEventsCache[$class])) {
+            return self::$usesHandlesEventsCache[$class];
+        }
 
-        return false;
+        $current = $class;
+        $uses = false;
+
+        do {
+            if (in_array(HandlesEvents::class, class_uses($current) ?: [], true)) {
+                $uses = true;
+                break;
+            }
+        } while ($current = get_parent_class($current));
+
+        return self::$usesHandlesEventsCache[$class] = $uses;
     }
 
     /**
