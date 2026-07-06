@@ -1,8 +1,8 @@
 # Laravel Action
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/laravel-action)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/iak/action/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/iak/action/actions?query=workflow%3Arun-tests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/iak/action/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/iak/action/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
+[![Latest Version on Packagist](https://img.shields.io/packagist/v/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/action)
+[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/iaK/action/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/iaK/action/actions?query=workflow%3Arun-tests+branch%3Amain)
+[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/iaK/action/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/iaK/action/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/action)
 
 A simple way to organize your business logic in Laravel applications.
@@ -421,15 +421,11 @@ it('tracks queries, logs, and performance', function () {
 
 The MIT License (MIT). Please see [License File](LICENSE.md) for more information.
 
-## Contributing
-
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
-
 ## Credits
 
-- [Isak Berglind](https://github.com/iak)
-- [All Contributors](../../contributors)
+- [Isak Berglind](https://github.com/iaK)
+- [All Contributors](https://github.com/iaK/action/contributors)
 
 ## Support
 
-If you discover any issues or have questions, please [open an issue](https://github.com/iak/laravel_action/issues).
+If you discover any issues or have questions, please [open an issue](https://github.com/iaK/action/issues).

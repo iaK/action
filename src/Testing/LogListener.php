@@ -112,10 +112,6 @@ class LogListener implements Listener
     {
         $logger = Log::getLogger();
         if ($logger instanceof Logger) {
-            // Remove our custom handler
-            $handlers = $logger->getHandlers();
-
-            // Clear all handlers and restore originals
             $logger->setHandlers($this->originalHandlers);
         }
     }
