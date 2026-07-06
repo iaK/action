@@ -24,7 +24,7 @@ describe('Profile', function () {
         $duration = $profile->duration();
 
         expect($duration)->toBeInstanceOf(CarbonInterval::class);
-        expect($duration->totalMilliseconds)->toBe(1500.0);
+        expect($duration->totalMilliseconds)->toEqual(1500); // int on Carbon 2, float on Carbon 3
     });
 
     it('has string representation', function () {
@@ -43,7 +43,7 @@ describe('Profile', function () {
 
         $duration = $profile->duration();
 
-        expect($duration->totalMilliseconds)->toBe(0.0);
+        expect($duration->totalMilliseconds)->toEqual(0); // int on Carbon 2, float on Carbon 3
     });
 
     it('can create profile with memory tracking', function () {
