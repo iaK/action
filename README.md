@@ -247,15 +247,36 @@ ChargeCustomer::make()
 
 **`circuitBreaker(key: null, threshold: 5, cooldown: 60, store: null)`** opens after `threshold` consecutive failures: further calls throw `CircuitOpenException` (with `availableIn()` seconds) without executing, giving the dependency `cooldown` seconds to recover before a single probe is let through. The breaker state is cache-backed and scoped to the action class by default — give the breakers of one shared dependency the same explicit key so they trip together across actions and processes.
 
+### Locks, throttles and transactions
+
+```php
+// Never two report generations at once — wait up to 5s for a running one.
+GenerateReport::make()->withoutOverlapping("report:{$team->id}", wait: 5)->handle($team);
+
+// At most 10 calls per minute against the mail provider.
+SendNewsletter::make()->throttle('mailgun', allow: 10, every: 60)->handle($batch);
+
+// All or nothing, with two shots at a deadlock.
+TransferFunds::make()->transactional(attempts: 2)->handle($from, $to, $amount);
+```
+
+**`withoutOverlapping(key: null, wait: 0, staleAfter: 60, store: null)`** is the mutex sibling of `idempotent()`: every call runs eventually, just never two at once per key. A held lock makes the call fail immediately — or after waiting up to `wait` seconds — with a `LockTimeoutException`. Nothing is cached. `staleAfter` caps how long a crashed holder can keep the lock. The lock *is* the feature, so a cache store without lock support is rejected loudly.
+
+**`throttle(key: null, allow: 60, every: 60)`** rate-limits executions per key. An exhausted budget throws `ThrottledException` (with `availableIn()` seconds) instead of blocking — composing `retry(backoff: ...)` around a throttled action is the supported way to wait a window out. Nested inside `retry()`, every attempt consumes budget: the throttle protects the dependency behind the action, not the caller.
+
+**`transactional(attempts: 1, connection: null)`** runs `handle()` inside `DB::transaction()`, re-running it up to `attempts` times on a deadlock or serialization failure.
+
+`idempotent()` is transaction-aware on its own: when it runs inside an open database transaction (on the default connection), the key is only consumed once that transaction commits — rolled-back work leaves the key free to retry.
+
 #### The nesting order is fixed
 
 Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
 
 ```
-fallback → idempotent → retry → circuit breaker → handle()
+fallback → idempotent → without overlapping → retry → circuit breaker → throttle → transaction → handle()
 ```
 
-Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker, an open circuit fails fast instead of being retried, and a fallback value is never cached as a real result.
+Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached as a real result.
 
 ## Testing & debugging
 

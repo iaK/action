@@ -10,6 +10,9 @@ use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Retry;
+use Iak\Action\Execution\Throttle;
+use Iak\Action\Execution\Transactional;
+use Iak\Action\Execution\WithoutOverlapping;
 use Throwable;
 
 /**
@@ -41,8 +44,11 @@ class PendingAction
     protected const ORDER = [
         'fallback',
         'idempotent',
+        'withoutOverlapping',
         'retry',
         'circuitBreaker',
+        'throttle',
+        'transactional',
     ];
 
     /**
@@ -113,6 +119,57 @@ class PendingAction
     public function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null): static
     {
         $this->middleware['retry'] = new Retry($times, $backoff, $when);
+
+        return $this;
+    }
+
+    /**
+     * Never run two overlapping executions per key: a held lock means this
+     * call waits up to $wait seconds (zero fails immediately) and then throws
+     * a LockTimeoutException. Unlike idempotent(), nothing is cached — every
+     * call runs eventually, just never two at once. $staleAfter caps how long
+     * a crashed holder can keep the lock. The key defaults to the action
+     * class. Requires a lock-capable cache store and fails loudly otherwise.
+     *
+     * @return $this
+     */
+    public function withoutOverlapping(?string $key = null, int $wait = 0, int $staleAfter = 60, ?string $store = null): static
+    {
+        $this->middleware['withoutOverlapping'] = new WithoutOverlapping(
+            $key ?? $this->action::class, $wait, $staleAfter, $store
+        );
+
+        return $this;
+    }
+
+    /**
+     * Rate-limit executions to $allow per $every seconds per key (defaulting
+     * to the action class). An exhausted budget throws ThrottledException —
+     * carrying availableIn() — instead of blocking; compose retry() with a
+     * backoff to wait a window out. Nested inside retry(), every attempt
+     * consumes budget: the throttle protects the dependency, not the caller.
+     *
+     * @return $this
+     */
+    public function throttle(?string $key = null, int $allow = 60, int $every = 60): static
+    {
+        $this->middleware['throttle'] = new Throttle($key ?? $this->action::class, $allow, $every);
+
+        return $this;
+    }
+
+    /**
+     * Run handle() inside a database transaction, retried up to $attempts
+     * times on a concurrency error (deadlock, serialization failure).
+     * Innermost in the nesting order: a retry() around it gives every
+     * attempt its own fresh transaction, and idempotent() outside it only
+     * consumes the key for work that actually committed.
+     *
+     * @return $this
+     */
+    public function transactional(int $attempts = 1, ?string $connection = null): static
+    {
+        $this->middleware['transactional'] = new Transactional($attempts, $connection);
 
         return $this;
     }

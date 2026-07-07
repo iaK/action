@@ -167,6 +167,41 @@ abstract class Action
     }
 
     /**
+     * Never run two overlapping executions per key: mutex semantics with an
+     * optional wait, throwing LockTimeoutException when the lock stays held.
+     * See PendingAction::withoutOverlapping() for the details.
+     *
+     * @return PendingAction<static>
+     */
+    public function withoutOverlapping(?string $key = null, int $wait = 0, int $staleAfter = 60, ?string $store = null): PendingAction
+    {
+        return (new PendingAction($this))->withoutOverlapping($key, $wait, $staleAfter, $store);
+    }
+
+    /**
+     * Rate-limit executions to $allow per $every seconds per key, throwing
+     * ThrottledException once the budget is exhausted. See
+     * PendingAction::throttle() for how it composes with retry().
+     *
+     * @return PendingAction<static>
+     */
+    public function throttle(?string $key = null, int $allow = 60, int $every = 60): PendingAction
+    {
+        return (new PendingAction($this))->throttle($key, $allow, $every);
+    }
+
+    /**
+     * Run handle() inside a database transaction, retried up to $attempts
+     * times on a concurrency error. See PendingAction::transactional().
+     *
+     * @return PendingAction<static>
+     */
+    public function transactional(int $attempts = 1, ?string $connection = null): PendingAction
+    {
+        return (new PendingAction($this))->transactional($attempts, $connection);
+    }
+
+    /**
      * Forget the cached idempotency result for the given key, so the next
      * idempotent() run for that key executes again. Applies the same
      * class-scoped key idempotent() uses.
