@@ -147,11 +147,12 @@ abstract class Action
      *
      * @param  (\Closure(int, \Throwable): int)|int|array<int, int>  $backoff
      * @param  (\Closure(\Throwable): bool)|null  $when
+     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value, so many processes retrying together spread out instead of arriving in synchronized waves.
      * @return PendingAction<static>
      */
-    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null): PendingAction
+    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null, bool $jitter = false): PendingAction
     {
-        return (new PendingAction($this))->retry($times, $backoff, $when);
+        return (new PendingAction($this))->retry($times, $backoff, $when, $jitter);
     }
 
     /**
