@@ -12,6 +12,7 @@ use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
+use LogicException;
 use Mockery;
 use Mockery\CompositeExpectation;
 use Mockery\LegacyMockInterface;
@@ -34,17 +35,59 @@ class Testable
         $this->instruments = [
             'profile' => new Instrumentation(
                 static fn (Action $action, Action $eventSource): ProfileListener => new ProfileListener($action, $eventSource),
-                static fn (Listener $listener): array => $listener instanceof ProfileListener ? [$listener->getProfile()] : [],
+                static fn (Listener $listener): array => $listener instanceof ProfileListener
+                    ? [$listener->getProfile()]
+                    : throw new LogicException('The profile instrumentation cannot read results from a '.$listener::class.'.'),
+                static function (Testable $testable, array $results): void {
+                    foreach (self::ensureResults(Profile::class, $results) as $profile) {
+                        $testable->addProfile($profile);
+                    }
+                },
             ),
             'queries' => new Instrumentation(
                 static fn (Action $action, Action $eventSource): QueryListener => new QueryListener($action::class),
-                static fn (Listener $listener): array => $listener instanceof QueryListener ? $listener->getQueries() : [],
+                static fn (Listener $listener): array => $listener instanceof QueryListener
+                    ? $listener->getQueries()
+                    : throw new LogicException('The queries instrumentation cannot read results from a '.$listener::class.'.'),
+                static function (Testable $testable, array $results): void {
+                    $testable->addQueries(self::ensureResults(Query::class, $results));
+                },
             ),
             'logs' => new Instrumentation(
                 static fn (Action $action, Action $eventSource): LogListener => new LogListener($action::class),
-                static fn (Listener $listener): array => $listener instanceof LogListener ? $listener->getLogs() : [],
+                static fn (Listener $listener): array => $listener instanceof LogListener
+                    ? $listener->getLogs()
+                    : throw new LogicException('The logs instrumentation cannot read results from a '.$listener::class.'.'),
+                static function (Testable $testable, array $results): void {
+                    $testable->addLogs(self::ensureResults(Entry::class, $results));
+                },
             ),
         ];
+    }
+
+    /**
+     * Guarantee results routed to a typed add hook are of that hook's result
+     * class. The listener/descriptor pairing is an internal invariant already
+     * enforced by readResults, so a mismatch here is a bug, never user error.
+     *
+     * @template TExpected of object
+     *
+     * @param  class-string<TExpected>  $class
+     * @param  array<int, mixed>  $results
+     * @return array<int, TExpected>
+     */
+    protected static function ensureResults(string $class, array $results): array
+    {
+        foreach ($results as $result) {
+            if (! $result instanceof $class) {
+                throw new LogicException(
+                    'Instrumentation results must be instances of '.$class.', got '.get_debug_type($result).'.'
+                );
+            }
+        }
+
+        /** @var array<int, TExpected> $results */
+        return $results;
     }
 
     /** @var array<string, Instrumentation<Listener, mixed>> */
@@ -285,7 +328,7 @@ class Testable
             $execute = function () use ($inner, $instrument): mixed {
                 $listener = ($instrument->createListener)($this->action, $this->action);
                 $result = $listener->listen($inner);
-                $instrument->collect(($instrument->readResults)($listener));
+                ($instrument->addResults)($this, ($instrument->readResults)($listener));
 
                 return $result;
             };
@@ -339,9 +382,7 @@ class Testable
                     $proxyClass = $this->createProxyClass($actionClass);
                     $config = new ProxyConfiguration(
                         $instrument->createListener,
-                        static function (Testable $testable, array $results) use ($instrument): void {
-                            $instrument->collect($results);
-                        },
+                        $instrument->addResults,
                         $instrument->readResults,
                     );
 

@@ -25,6 +25,7 @@ All notable changes to `laravel-action` will be documented in this file.
 - Auto-mocked actions return a zero value matching their declared `handle()` return type (`''`, `0`, `false`, `[]`) instead of `null`.
 - Declared the runtime dependencies (`illuminate/support`, `illuminate/database`, `monolog/monolog`, `nesbot/carbon`) and suggested `mockery/mockery` for the testing helpers.
 - The `profile()`/`queries()`/`logs()` test instruments now share one generic `Instrumentation` descriptor internally instead of three copies of the registration, interception and collection machinery — groundwork for future instruments.
+- Every collection path — nested-action proxies and the action under test alike — now routes through the overridable `addProfile()`/`addQueries()`/`addLogs()` hooks, so a `Testable` subclass overriding them sees all collected results. A listener mispaired with its instrumentation descriptor now throws a `LogicException` instead of silently reading no results.
 
 **Bug fixes**
 

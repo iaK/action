@@ -61,12 +61,18 @@ class Instrumentation
     protected array $results = [];
 
     /**
+     * The results arrays are deliberately untyped for the covariance reason
+     * documented on the class; addResults narrows back to the concrete type
+     * before invoking the typed public hook.
+     *
      * @param  Closure(Action, Action): TListener  $createListener  Builds the listener for an action and its event source
      * @param  Closure(Listener): array<int, TResult>  $readResults  Reads the collected results off a finished listener
+     * @param  Closure(Testable<Action>, array<int, mixed>): void  $addResults  Routes read results through the testable's overridable public add hook
      */
     public function __construct(
         public readonly Closure $createListener,
         public readonly Closure $readResults,
+        public readonly Closure $addResults,
     ) {}
 
     /**
