@@ -16,6 +16,8 @@ use InvalidArgumentException;
  */
 class Transactional implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected int $attempts = 1,
         protected ?string $connection = null,

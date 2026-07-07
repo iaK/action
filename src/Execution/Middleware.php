@@ -22,4 +22,12 @@ interface Middleware
      * @param  Closure(): mixed  $next
      */
     public function handle(Closure $next): mixed;
+
+    /**
+     * Report this middleware's decisions to the given recorder for the
+     * upcoming invocation. PendingAction calls this right before assembling
+     * the chain when tracing is enabled; without it, middleware keep a null
+     * recorder and record nothing.
+     */
+    public function traceTo(TraceRecorder $recorder): void;
 }

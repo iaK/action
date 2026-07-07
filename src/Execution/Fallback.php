@@ -16,6 +16,8 @@ use Throwable;
  */
 class Fallback implements Middleware
 {
+    use TracksTrace;
+
     /**
      * @param  Closure(Throwable): mixed  $fallback
      */

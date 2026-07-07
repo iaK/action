@@ -17,6 +17,8 @@ use Throwable;
  */
 class Retry implements Middleware
 {
+    use TracksTrace;
+
     /**
      * @param  int  $times  Total attempts, including the first one.
      * @param  (Closure(int, Throwable): int)|int|array<int, int>  $backoff  Milliseconds to sleep between attempts: a fixed value, a per-attempt schedule (the last entry repeats), or a closure receiving the attempt number and the exception.

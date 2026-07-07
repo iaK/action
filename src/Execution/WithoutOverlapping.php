@@ -23,6 +23,8 @@ use RuntimeException;
  */
 class WithoutOverlapping implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected string $key,
         protected int $wait = 0,

@@ -27,6 +27,8 @@ use Throwable;
  */
 class CircuitBreaker implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected string $key,
         protected int $threshold = 5,

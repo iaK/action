@@ -21,6 +21,8 @@ use InvalidArgumentException;
  */
 class Throttle implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected string $key,
         protected int $allow = 60,

@@ -18,6 +18,8 @@ use Throwable;
  */
 class Memoize implements Middleware
 {
+    use TracksTrace;
+
     protected ?string $resolvedKey = null;
 
     public function __construct(protected ?string $key = null) {}
