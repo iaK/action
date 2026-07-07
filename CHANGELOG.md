@@ -32,6 +32,7 @@ All notable changes to `laravel-action` will be documented in this file.
 - Fixed a crash in the event-cleanup destructor when it fired between tests while facades pointed at a flushed application.
 - Container bindings replaced by `profile()`/`queries()`/`logs()` proxies are restored after `handle()`, and the `only()` hook deactivates itself instead of intercepting resolutions (and leaking the `Testable`) forever.
 - `profile()`/`queries()`/`logs()` now reject `final` action classes with a clear exception instead of an uncatchable fatal when the proxy is created.
+- The `final`-class guard also applies to `queries($callback)`: that path additionally registers the action under test as a proxy target, so a `final` self-resolving action previously fataled when re-resolved mid-run instead of failing at registration.
 - `ProfileListener` removes its `action.record_memory.*` listeners after the profiled run instead of leaking them.
 
 ## v1.3.0 - 2025-11-04

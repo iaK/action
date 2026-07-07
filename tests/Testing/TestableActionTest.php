@@ -147,6 +147,14 @@ describe('Testable', function () {
                 ->toThrow(InvalidArgumentException::class, 'final');
         });
 
+        it('throws a clear exception when queries() is used callback-only on a final action', function () {
+            // The callback-only path also seeds the action under test as a
+            // proxy target; without the guard a final self-resolving action
+            // fatals inside createProxyClass()'s eval instead
+            expect(fn () => FinalAction::test()->queries(fn () => null))
+                ->toThrow(InvalidArgumentException::class, 'final');
+        });
+
         it('restores proxy container bindings after handle() completes', function () {
             ClosureAction::test()
                 ->queries(OtherClosureAction::class, fn () => null)

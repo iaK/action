@@ -161,7 +161,7 @@ class Testable
         // action is re-resolved from the container during the run (e.g. a
         // self-resolving action); it is preserved here for exact behavioral parity.
         if ($callback === null && $actions instanceof Closure) {
-            $this->instruments['queries']->actions = [$this->action::class];
+            $this->instruments['queries']->actions = [$this->resolveProxyableActionClass($this->action::class)];
         }
 
         return $this;
