@@ -4,6 +4,7 @@ namespace Iak\Action;
 
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Execution\Idempotency;
 use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -117,11 +118,11 @@ abstract class Action
      * or null to remember it forever, and a cache store name to override the
      * default store.
      *
-     * @return IdempotentAction<static>
+     * @return PendingAction<static>
      */
-    public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): IdempotentAction
+    public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
     {
-        return new IdempotentAction($this, $key, $ttl, $store);
+        return (new PendingAction($this))->idempotent($key, $ttl, $store);
     }
 
     /**
@@ -131,7 +132,7 @@ abstract class Action
      */
     public function forgetIdempotency(string $key, ?string $store = null): void
     {
-        Cache::store($store)->forget(IdempotentAction::keyFor(static::class, $key));
+        Cache::store($store)->forget(Idempotency::keyFor(static::class, $key));
     }
 
     /**

@@ -6,7 +6,7 @@ use Closure;
 use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Action;
-use Iak\Action\IdempotentAction;
+use Iak\Action\PendingAction;
 use Iak\Action\Testing\Results\Entry;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
@@ -99,8 +99,8 @@ class Testable
     /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
     protected array $replacedBindings = [];
 
-    /** @var IdempotentAction<TAction>|null */
-    protected ?IdempotentAction $idempotency = null;
+    /** @var PendingAction<TAction>|null */
+    protected ?PendingAction $idempotency = null;
 
     protected bool $interceptingOnly = false;
 
@@ -268,7 +268,7 @@ class Testable
      */
     public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
     {
-        $this->idempotency = new IdempotentAction($this->action, $key, $ttl, $store);
+        $this->idempotency = (new PendingAction($this->action))->idempotent($key, $ttl, $store);
 
         return $this;
     }
