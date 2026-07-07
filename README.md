@@ -221,6 +221,42 @@ $testable->wasExecuted(); // true on the run that executed, false when served fr
 
 On a cache hit nothing executes, so nothing is instrumented and no inspection callbacks fire — `wasExecuted()` tells the runs apart.
 
+### Retries, fallbacks and circuit breakers
+
+The resilience helpers wrap `handle()` the same way `idempotent()` does, and they all return the same chainable wrapper:
+
+```php
+// Re-run a flaky action: up to 3 total attempts, pausing 100ms then 500ms.
+SyncInventory::make()->retry(times: 3, backoff: [100, 500])->handle($warehouse);
+
+// Degrade gracefully when the action (still) fails.
+$rate = FetchExchangeRate::make()
+    ->retry(times: 2)
+    ->fallback(fn (Throwable $e) => ExchangeRate::lastKnown($currency))
+    ->handle($currency);
+
+// Stop hammering a dependency that keeps failing.
+ChargeCustomer::make()
+    ->circuitBreaker('stripe', threshold: 5, cooldown: 60)
+    ->handle($order);
+```
+
+**`retry(times: 3, backoff: 0, when: null)`** re-runs `handle()` when it throws, up to `times` total attempts. `backoff` is the pause between attempts in milliseconds: a fixed value, a per-attempt schedule (`[100, 500]` — the last entry repeats), or a closure receiving the attempt number and the exception. Sleeping goes through Laravel's `Sleep`, so tests control it with `Sleep::fake()`. By default every exception is retried except those implementing the `Iak\Action\Exceptions\NonRetryable` marker interface — implement it on your own exceptions to fail fast, or pass a `when:` closure to decide entirely yourself.
+
+**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action ultimately throws — including after exhausted retries or on an open circuit breaker. Rethrow from the closure to decline.
+
+**`circuitBreaker(key: null, threshold: 5, cooldown: 60, store: null)`** opens after `threshold` consecutive failures: further calls throw `CircuitOpenException` (with `availableIn()` seconds) without executing, giving the dependency `cooldown` seconds to recover before a single probe is let through. The breaker state is cache-backed and scoped to the action class by default — give the breakers of one shared dependency the same explicit key so they trip together across actions and processes.
+
+#### The nesting order is fixed
+
+Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
+
+```
+fallback → idempotent → retry → circuit breaker → handle()
+```
+
+Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker, an open circuit fails fast instead of being retried, and a fallback value is never cached as a real result.
+
 ## Testing & debugging
 
 Actions provide helpful static methods for testing and debugging:
