@@ -6,6 +6,7 @@ use Closure;
 use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Action;
+use Iak\Action\ActionContext;
 use Iak\Action\PendingAction;
 use Iak\Action\Support\Dumper;
 use Iak\Action\Testing\Results\EmittedEvent;
@@ -738,13 +739,25 @@ class Testable
     }
 
     /**
+     * Run the given invocation attributed in Laravel's log Context, through
+     * the dry-run transactions, the idempotency wrapper (each when
+     * configured) and the instrumented execution flow.
+     *
+     * @param  Closure(): mixed  $invoke
+     */
+    protected function execute(Closure $invoke): mixed
+    {
+        return ActionContext::within($this->action, fn (): mixed => $this->executeInvocation($invoke));
+    }
+
+    /**
      * Run the given invocation through the dry-run transactions, the
      * idempotency wrapper (each when configured) and the instrumented
      * execution flow.
      *
      * @param  Closure(): mixed  $invoke
      */
-    protected function execute(Closure $invoke): mixed
+    protected function executeInvocation(Closure $invoke): mixed
     {
         if (! $this->dryRun) {
             return $this->handleThrough($invoke);

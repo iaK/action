@@ -304,6 +304,18 @@ class PendingAction
     }
 
     /**
+     * Send the invocation through the configured middleware, attributed in
+     * Laravel's log Context for the duration of the run.
+     *
+     * @param  Closure(): mixed  $invoke
+     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
+     */
+    protected function through(Closure $invoke, ?array $args): mixed
+    {
+        return ActionContext::within($this->action, fn (): mixed => $this->throughChain($invoke, $args));
+    }
+
+    /**
      * Send the invocation through the configured middleware, nested in the
      * fixed ORDER (outermost first) regardless of chaining order, with the
      * lifecycle events dispatched around the whole chain.
@@ -311,7 +323,7 @@ class PendingAction
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
      */
-    protected function through(Closure $invoke, ?array $args): mixed
+    protected function throughChain(Closure $invoke, ?array $args): mixed
     {
         $memoize = $this->middleware['memoize'] ?? null;
 
