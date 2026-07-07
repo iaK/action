@@ -4,6 +4,7 @@ namespace Iak\Action;
 
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Execution\Idempotency;
 use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -117,11 +118,52 @@ abstract class Action
      * or null to remember it forever, and a cache store name to override the
      * default store.
      *
-     * @return IdempotentAction<static>
+     * @return PendingAction<static>
      */
-    public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): IdempotentAction
+    public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
     {
-        return new IdempotentAction($this, $key, $ttl, $store);
+        return (new PendingAction($this))->idempotent($key, $ttl, $store);
+    }
+
+    /**
+     * Answer with the closure's value when handle() ultimately throws. The
+     * closure receives the Throwable and may rethrow to decline. See
+     * PendingAction::fallback() for how it composes with the other wrappers.
+     *
+     * @param  \Closure(\Throwable): mixed  $fallback
+     * @return PendingAction<static>
+     */
+    public function fallback(\Closure $fallback): PendingAction
+    {
+        return (new PendingAction($this))->fallback($fallback);
+    }
+
+    /**
+     * Re-run handle() when it throws, up to $times total attempts, sleeping
+     * the given backoff (milliseconds) between attempts. See
+     * PendingAction::retry() for the backoff shapes and the NonRetryable
+     * default of the $when filter.
+     *
+     * @param  (\Closure(int, \Throwable): int)|int|array<int, int>  $backoff
+     * @param  (\Closure(\Throwable): bool)|null  $when
+     * @return PendingAction<static>
+     */
+    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null): PendingAction
+    {
+        return (new PendingAction($this))->retry($times, $backoff, $when);
+    }
+
+    /**
+     * Fail fast while a dependency is broken: after $threshold consecutive
+     * failures handle() throws CircuitOpenException without executing until
+     * the cooldown has passed. See PendingAction::circuitBreaker() for the
+     * key scoping and how it composes with retry().
+     *
+     * @return PendingAction<static>
+     */
+    public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): PendingAction
+    {
+        return (new PendingAction($this))->circuitBreaker($key, $threshold, $cooldown, $store);
     }
 
     /**
@@ -131,7 +173,7 @@ abstract class Action
      */
     public function forgetIdempotency(string $key, ?string $store = null): void
     {
-        Cache::store($store)->forget(IdempotentAction::keyFor(static::class, $key));
+        Cache::store($store)->forget(Idempotency::keyFor(static::class, $key));
     }
 
     /**

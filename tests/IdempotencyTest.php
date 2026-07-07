@@ -1,6 +1,6 @@
 <?php
 
-use Iak\Action\IdempotentAction;
+use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ArrayNoLockStore;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\InjectingAction;
@@ -181,7 +181,7 @@ describe('idempotent()', function () {
     it('returns a typed wrapper from idempotent()', function () {
         $wrapper = ClosureAction::make()->idempotent('typed-key');
 
-        expect($wrapper)->toBeInstanceOf(IdempotentAction::class);
+        expect($wrapper)->toBeInstanceOf(PendingAction::class);
     });
 
     it('runs once via run() and shares the cache entry with handle()', function () {
