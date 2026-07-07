@@ -7,6 +7,7 @@ use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Action;
 use Iak\Action\PendingAction;
+use Iak\Action\Testing\Results\EmittedEvent;
 use Iak\Action\Testing\Results\Entry;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
@@ -32,7 +33,7 @@ class Testable
         public Action $action
     ) {
         // Array order defines handle()'s wrapping order: first entry innermost (profile),
-        // last outermost (logs). This ordering is pinned by tests.
+        // last outermost (events). This ordering is pinned by tests.
         $this->instruments = [
             'profile' => new Instrumentation(
                 static fn (Action $action, Action $eventSource): ProfileListener => new ProfileListener($action, $eventSource),
@@ -61,6 +62,15 @@ class Testable
                     : throw new LogicException('The logs instrumentation cannot read results from a '.$listener::class.'.'),
                 static function (Testable $testable, array $results): void {
                     $testable->addLogs(self::ensureResults(Entry::class, $results));
+                },
+            ),
+            'events' => new Instrumentation(
+                static fn (Action $action, Action $eventSource): EventListener => new EventListener($action, $eventSource),
+                static fn (Listener $listener): array => $listener instanceof EventListener
+                    ? $listener->getEvents()
+                    : throw new LogicException('The events instrumentation cannot read results from a '.$listener::class.'.'),
+                static function (Testable $testable, array $results): void {
+                    $testable->addEvents(self::ensureResults(EmittedEvent::class, $results));
                 },
             ),
         ];
@@ -234,6 +244,19 @@ class Testable
     public function logs(Closure|string|array $actions, ?Closure $callback = null): static
     {
         return $this->register($this->instruments['logs'], $actions, $callback);
+    }
+
+    /**
+     * Record events emitted by the action under test, or by specific nested
+     * actions. Events propagated into an instrumented action are re-emitted
+     * under its own name and therefore recorded as its own.
+     *
+     * @param  (Closure(Collection<int, EmittedEvent>): void)|class-string<Action>|array<int, class-string<Action>>  $actions
+     * @param  (Closure(Collection<int, EmittedEvent>): void)|null  $callback
+     */
+    public function events(Closure|string|array $actions, ?Closure $callback = null): static
+    {
+        return $this->register($this->instruments['events'], $actions, $callback);
     }
 
     /**
@@ -433,6 +456,14 @@ class Testable
     public function addProfile(Profile $profile): void
     {
         $this->instruments['profile']->collect([$profile]);
+    }
+
+    /**
+     * @param  array<int, EmittedEvent>  $events
+     */
+    public function addEvents(array $events): void
+    {
+        $this->instruments['events']->collect($events);
     }
 
     /**

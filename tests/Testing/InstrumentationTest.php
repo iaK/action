@@ -40,6 +40,12 @@ function testableObservingHooks(): Testable
             $this->hookCounts['logs'] = ($this->hookCounts['logs'] ?? 0) + count($logs);
             parent::addLogs($logs);
         }
+
+        public function addEvents(array $events): void
+        {
+            $this->hookCounts['events'] = ($this->hookCounts['events'] ?? 0) + count($events);
+            parent::addEvents($events);
+        }
     };
 }
 
@@ -57,12 +63,16 @@ describe('Instrumentation Collection Funnel', function () {
             ->logs(function (Collection $logs) {
                 expect($logs)->toHaveCount(1);
             })
-            ->handle(function () {
+            ->events(function (Collection $events) {
+                expect($events)->toHaveCount(1);
+            })
+            ->handle(function (ClosureAction $action) {
                 DB::statement('SELECT 1');
                 Log::info('funnel');
+                $action->event('test.event.a', 'funneled');
             });
 
-        expect($testable->hookCounts)->toEqual(['profile' => 1, 'queries' => 1, 'logs' => 1]);
+        expect($testable->hookCounts)->toEqual(['profile' => 1, 'queries' => 1, 'logs' => 1, 'events' => 1]);
     });
 
     it('routes results collected through nested-action proxies through the overridable add hooks', function () {
@@ -93,6 +103,8 @@ describe('Instrumentation Collection Funnel', function () {
         expect(fn () => ($instruments['queries']->readResults)(new LogListener(ClosureAction::class)))
             ->toThrow(LogicException::class, LogListener::class);
         expect(fn () => ($instruments['logs']->readResults)(new QueryListener(ClosureAction::class)))
+            ->toThrow(LogicException::class, QueryListener::class);
+        expect(fn () => ($instruments['events']->readResults)(new QueryListener(ClosureAction::class)))
             ->toThrow(LogicException::class, QueryListener::class);
     });
 });
