@@ -204,6 +204,22 @@ $order = ChargeCustomer::make()
 
 Both entry points share the same key and cache entry — pick whichever reads better and switch freely.
 
+#### With the test instruments
+
+Idempotency chains with the [test instruments](#testing--debugging) in any order and shares keys with the production wrapper:
+
+```php
+$testable = ChargeCustomer::test()
+    ->profile(fn ($profiles) => /* ... */)
+    ->idempotent("charge:{$order->id}");
+
+$testable->handle($order);
+
+$testable->wasExecuted(); // true on the run that executed, false when served from cache
+```
+
+On a cache hit nothing executes, so nothing is instrumented and no inspection callbacks fire — `wasExecuted()` tells the runs apart.
+
 ## Testing & debugging
 
 Actions provide helpful static methods for testing and debugging:

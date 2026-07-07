@@ -3,7 +3,10 @@
 namespace Iak\Action\Testing;
 
 use Closure;
+use DateInterval;
+use DateTimeInterface;
 use Iak\Action\Action;
+use Iak\Action\IdempotentAction;
 use Iak\Action\Testing\Results\Entry;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
@@ -52,6 +55,9 @@ class Testable
 
     /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
     protected array $replacedBindings = [];
+
+    /** @var IdempotentAction<TAction>|null */
+    protected ?IdempotentAction $idempotency = null;
 
     protected bool $interceptingOnly = false;
 
@@ -210,9 +216,51 @@ class Testable
     }
 
     /**
+     * Run handle() at most once per idempotency key, chainable with the
+     * instruments. On a cache hit nothing executes, so nothing is instrumented
+     * and no inspection callbacks fire — wasExecuted() tells the runs apart.
+     * Keys are shared with the production idempotent() wrapper.
+     *
+     * @return $this
+     */
+    public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
+    {
+        $this->idempotency = new IdempotentAction($this->action, $key, $ttl, $store);
+
+        return $this;
+    }
+
+    /**
+     * Whether the action ran on the last handle() call: null when idempotent()
+     * is not configured (or before handle() runs), true if it executed, false
+     * if the result was served from the idempotency cache.
+     */
+    public function wasExecuted(): ?bool
+    {
+        return $this->idempotency?->wasExecuted();
+    }
+
+    /**
      * Execute the action and run any registered inspection callbacks
      */
     public function handle(mixed ...$args): mixed
+    {
+        if ($this->idempotency !== null) {
+            // Wrap the whole instrumented run: a cache hit short-circuits
+            // before any mock or proxy is bound, so there is nothing to
+            // restore and nothing to report.
+            return $this->idempotency->run(fn (): mixed => $this->handleInstrumented($args));
+        }
+
+        return $this->handleInstrumented($args);
+    }
+
+    /**
+     * The instrumented execution flow behind handle().
+     *
+     * @param  array<array-key, mixed>  $args
+     */
+    protected function handleInstrumented(array $args): mixed
     {
         $this->handleOnly();
         $this->remakeActionForOnly();
