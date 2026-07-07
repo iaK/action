@@ -8,6 +8,7 @@ use Iak\Action\Tests\TestClasses\OtherClosureAction;
 use Illuminate\Cache\Repository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
     Cache::flush();
@@ -248,6 +249,57 @@ describe('idempotent()', function () {
         expect($wrapper->handle())->toBe('typed');
         expect($wrapper->handle())->toBe('typed');
         expect($wrapper->wasExecuted())->toBeFalse();
+    });
+
+    it('does not consume the key when a surrounding database transaction rolls back', function () {
+        $count = 0;
+        $closure = function () use (&$count) {
+            $count++;
+
+            return 'value';
+        };
+
+        $action = ClosureAction::make();
+
+        try {
+            DB::transaction(function () use ($action, $closure) {
+                $action->idempotent('tx-rollback-key')->handle($closure);
+
+                throw new RuntimeException('roll it back');
+            });
+        } catch (RuntimeException) {
+        }
+
+        expect($count)->toBe(1);
+
+        // The rolled-back run must not have consumed the key.
+        $result = $action->idempotent('tx-rollback-key')->handle($closure);
+
+        expect($result)->toBe('value');
+        expect($count)->toBe(2);
+    });
+
+    it('consumes the key once a surrounding database transaction commits', function () {
+        $count = 0;
+        $closure = function () use (&$count) {
+            $count++;
+
+            return 'value';
+        };
+
+        $action = ClosureAction::make();
+
+        DB::transaction(function () use ($action, $closure) {
+            $wrapper = $action->idempotent('tx-commit-key');
+
+            expect($wrapper->handle($closure))->toBe('value');
+            expect($wrapper->wasExecuted())->toBeTrue();
+        });
+
+        $result = $action->idempotent('tx-commit-key')->handle($closure);
+
+        expect($result)->toBe('value');
+        expect($count)->toBe(1);
     });
 
     it('caches without a lock when the store is not a LockProvider', function () {

@@ -9,6 +9,7 @@ use Iak\Action\Action;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Runs the invocation at most once per idempotency key: the first successful
@@ -147,17 +148,35 @@ class Idempotency implements Middleware
      * Store the result envelope, honouring the configured TTL (forever when
      * no TTL is given).
      *
+     * Inside an open database transaction (on the default connection) the
+     * write is deferred to the commit: work that rolls back must not consume
+     * the key, and a rollback simply discards the deferred write. The window
+     * in which a concurrent duplicate can still execute widens by the time
+     * to commit — the price of not caching uncommitted work.
+     *
      * @param  array{result: mixed}  $envelope
      */
     protected function persist(Repository $cache, string $cacheKey, array $envelope): void
     {
-        if ($this->ttl === null) {
-            $cache->forever($cacheKey, $envelope);
+        $write = function () use ($cache, $cacheKey, $envelope): void {
+            if ($this->ttl === null) {
+                $cache->forever($cacheKey, $envelope);
+
+                return;
+            }
+
+            $cache->put($cacheKey, $envelope, $this->ttl);
+        };
+
+        $connection = DB::connection();
+
+        if ($connection->transactionLevel() > 0) {
+            $connection->afterCommit($write);
 
             return;
         }
 
-        $cache->put($cacheKey, $envelope, $this->ttl);
+        $write();
     }
 
     /**
