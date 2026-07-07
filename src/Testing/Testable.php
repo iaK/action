@@ -7,6 +7,7 @@ use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Action;
 use Iak\Action\PendingAction;
+use Iak\Action\Testing\Results\EmittedEvent;
 use Iak\Action\Testing\Results\Entry;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
@@ -18,10 +19,13 @@ use Mockery;
 use Mockery\CompositeExpectation;
 use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Assert;
 use RuntimeException;
 
 /**
  * @template TAction of Action
+ *
+ * @mixin TAction
  */
 class Testable
 {
@@ -32,7 +36,7 @@ class Testable
         public Action $action
     ) {
         // Array order defines handle()'s wrapping order: first entry innermost (profile),
-        // last outermost (logs). This ordering is pinned by tests.
+        // last outermost (events). This ordering is pinned by tests.
         $this->instruments = [
             'profile' => new Instrumentation(
                 static fn (Action $action, Action $eventSource): ProfileListener => new ProfileListener($action, $eventSource),
@@ -61,6 +65,15 @@ class Testable
                     : throw new LogicException('The logs instrumentation cannot read results from a '.$listener::class.'.'),
                 static function (Testable $testable, array $results): void {
                     $testable->addLogs(self::ensureResults(Entry::class, $results));
+                },
+            ),
+            'events' => new Instrumentation(
+                static fn (Action $action, Action $eventSource): EventListener => new EventListener($action, $eventSource),
+                static fn (Listener $listener): array => $listener instanceof EventListener
+                    ? $listener->getEvents()
+                    : throw new LogicException('The events instrumentation cannot read results from a '.$listener::class.'.'),
+                static function (Testable $testable, array $results): void {
+                    $testable->addEvents(self::ensureResults(EmittedEvent::class, $results));
                 },
             ),
         ];
@@ -96,6 +109,9 @@ class Testable
 
     /** @var array<int, class-string<Action>> */
     protected array $only = [];
+
+    /** @var array<int, Closure(): void> */
+    protected array $queryAssertions = [];
 
     /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
     protected array $replacedBindings = [];
@@ -237,6 +253,104 @@ class Testable
     }
 
     /**
+     * Record events emitted by the action under test, or by specific nested
+     * actions. Events propagated into an instrumented action are re-emitted
+     * under its own name and therefore recorded as its own.
+     *
+     * @param  (Closure(Collection<int, EmittedEvent>): void)|class-string<Action>|array<int, class-string<Action>>  $actions
+     * @param  (Closure(Collection<int, EmittedEvent>): void)|null  $callback
+     */
+    public function events(Closure|string|array $actions, ?Closure $callback = null): static
+    {
+        return $this->register($this->instruments['events'], $actions, $callback);
+    }
+
+    /**
+     * Assert that no query recorded during the run executed more than once,
+     * grouping by connection and normalized SQL (whitespace collapsed,
+     * placeholder lists reduced), so classic N+1 patterns fail the test.
+     * Enables query recording for the action under test; the check runs
+     * after handle() completes and covers everything the queries instrument
+     * recorded, nested proxies included. Like the inspection callbacks, it
+     * does not run when the idempotency cache serves the result.
+     */
+    public function assertNoDuplicateQueries(): static
+    {
+        $this->instruments['queries']->wrapMainAction = true;
+
+        $this->queryAssertions[] = function (): void {
+            $duplicates = (new Collection($this->recordedQueries()))
+                ->groupBy(fn (Query $query): string => $query->connection.'|'.$query->normalizedSql())
+                ->filter(fn (Collection $group): bool => $group->count() > 1);
+
+            if ($duplicates->isEmpty()) {
+                return;
+            }
+
+            $lines = $duplicates
+                ->map(fn (Collection $group): string => '['.$group->count().'x] '.$group->first()?->normalizedSql())
+                ->values()
+                ->implode(PHP_EOL);
+
+            $this->failAssertion('Expected no duplicate queries, but found:'.PHP_EOL.$lines);
+        };
+
+        return $this;
+    }
+
+    /**
+     * Assert that exactly the given number of queries was recorded during the
+     * run. Enables query recording for the action under test; the check runs
+     * after handle() completes and covers everything the queries instrument
+     * recorded, nested proxies included. Like the inspection callbacks, it
+     * does not run when the idempotency cache serves the result.
+     */
+    public function assertQueryCount(int $count): static
+    {
+        $this->instruments['queries']->wrapMainAction = true;
+
+        $this->queryAssertions[] = function () use ($count): void {
+            $queries = $this->recordedQueries();
+
+            if (count($queries) === $count) {
+                return;
+            }
+
+            $sql = array_map(fn (Query $query): string => '- '.$query->query, $queries);
+
+            $this->failAssertion(
+                'Expected exactly '.$count.' queries, '.count($queries).' recorded:'
+                .PHP_EOL.implode(PHP_EOL, $sql)
+            );
+        };
+
+        return $this;
+    }
+
+    /**
+     * @return array<int, Query>
+     */
+    protected function recordedQueries(): array
+    {
+        return self::ensureResults(Query::class, $this->instruments['queries']->results());
+    }
+
+    /**
+     * Fail a deferred query assertion: through PHPUnit when it is installed
+     * (a proper test failure), otherwise a plain AssertionError - the Testing
+     * namespace must stay usable on the supported profile-in-prod path where
+     * PHPUnit is absent.
+     */
+    protected function failAssertion(string $message): never
+    {
+        if (class_exists(Assert::class)) {
+            Assert::fail($message);
+        }
+
+        throw new \AssertionError($message);
+    }
+
+    /**
      * Shared registration logic for the profile()/queries()/logs() registrars:
      * capture a callback for the action under test, or resolve a list of nested
      * actions to instrument.
@@ -320,12 +434,59 @@ class Testable
     }
 
     /**
-     * Execute the action and run any registered inspection callbacks
+     * Intercept handle() and forward any other method call to the wrapped
+     * action. handle() itself is virtual on purpose: the class-level
+     * `@mixin TAction` gives it the wrapped action's real signature in tools
+     * that resolve generic mixins, which a declared handle(mixed ...$args)
+     * would shadow. __call only fires for undefined methods, so Testable's
+     * own API is never intercepted.
+     *
+     * @param  array<array-key, mixed>  $arguments
      */
-    public function handle(mixed ...$args): mixed
+    public function __call(string $method, array $arguments): mixed
+    {
+        if ($method === 'handle') {
+            return $this->execute(fn (): mixed => $this->action->handle(...$arguments));
+        }
+
+        return $this->action->{$method}(...$arguments);
+    }
+
+    /**
+     * Execute the action through a closure that receives the wrapped action:
+     * the typed alternative to handle() for editors that do not resolve
+     * generic mixins yet, with checked arguments and an inferred return type.
+     * The closure runs inside the full instrumented flow (dry-run
+     * transactions and the idempotency wrapper included), exactly like
+     * handle().
+     *
+     * @template TReturn
+     *
+     * @param  Closure(TAction): TReturn  $callback
+     * @return TReturn
+     */
+    public function run(Closure $callback): mixed
+    {
+        // The instrument wrappers erase the closure's return type, so the
+        // result is claimed back as TReturn here - the same trust the
+        // @mixin-typed handle() path implies, made explicit at this boundary.
+        /** @var TReturn $result */
+        $result = $this->execute(fn (): mixed => $callback($this->action));
+
+        return $result;
+    }
+
+    /**
+     * Run the given invocation through the dry-run transactions, the
+     * idempotency wrapper (each when configured) and the instrumented
+     * execution flow.
+     *
+     * @param  Closure(): mixed  $invoke
+     */
+    protected function execute(Closure $invoke): mixed
     {
         if (! $this->dryRun) {
-            return $this->handleThrough($args);
+            return $this->handleThrough($invoke);
         }
 
         $connections = array_map(
@@ -338,7 +499,7 @@ class Testable
         }
 
         try {
-            return $this->handleThrough($args);
+            return $this->handleThrough($invoke);
         } finally {
             // Unwind in reverse so nested begin/rollback pairs match.
             foreach (array_reverse($connections) as $connection) {
@@ -348,38 +509,34 @@ class Testable
     }
 
     /**
-     * The execution flow behind handle(): the idempotency wrapper (when
-     * configured) around the instrumented run.
+     * The execution flow behind handle() and run(): the idempotency wrapper
+     * (when configured) around the instrumented run.
      *
-     * @param  array<array-key, mixed>  $args
+     * @param  Closure(): mixed  $invoke
      */
-    protected function handleThrough(array $args): mixed
+    protected function handleThrough(Closure $invoke): mixed
     {
         if ($this->idempotency !== null) {
             // Wrap the whole instrumented run: a cache hit short-circuits
             // before any mock or proxy is bound, so there is nothing to
             // restore and nothing to report.
-            return $this->idempotency->run(fn (): mixed => $this->handleInstrumented($args));
+            return $this->idempotency->run(fn (): mixed => $this->handleInstrumented($invoke));
         }
 
-        return $this->handleInstrumented($args);
+        return $this->handleInstrumented($invoke);
     }
 
     /**
-     * The instrumented execution flow behind handle().
+     * The instrumented execution flow behind handle() and run().
      *
-     * @param  array<array-key, mixed>  $args
+     * @param  Closure(): mixed  $execute  The innermost invocation of the action
      */
-    protected function handleInstrumented(array $args): mixed
+    protected function handleInstrumented(Closure $execute): mixed
     {
         $this->handleOnly();
         $this->remakeActionForOnly();
 
         $this->intercept();
-
-        $execute = function () use ($args): mixed {
-            return $this->action->handle(...$args);
-        };
 
         // Wrap the execution innermost to outermost. The descriptors are
         // ordered profile, queries, logs, so profiling ends up innermost
@@ -411,6 +568,10 @@ class Testable
             $instrument->report();
         }
 
+        foreach ($this->queryAssertions as $assertion) {
+            $assertion();
+        }
+
         return $result;
     }
 
@@ -433,6 +594,14 @@ class Testable
     public function addProfile(Profile $profile): void
     {
         $this->instruments['profile']->collect([$profile]);
+    }
+
+    /**
+     * @param  array<int, EmittedEvent>  $events
+     */
+    public function addEvents(array $events): void
+    {
+        $this->instruments['events']->collect($events);
     }
 
     /**

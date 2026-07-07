@@ -88,6 +88,16 @@ class Instrumentation
     }
 
     /**
+     * The results gathered so far, in collection order.
+     *
+     * @return array<int, mixed>
+     */
+    public function results(): array
+    {
+        return $this->results;
+    }
+
+    /**
      * Invoke the registered callback (if any) with the collected results.
      */
     public function report(): void
