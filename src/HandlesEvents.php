@@ -3,6 +3,7 @@
 namespace Iak\Action;
 
 use Illuminate\Support\Facades\Event;
+use UnitEnum;
 
 trait HandlesEvents
 {
@@ -20,8 +21,10 @@ trait HandlesEvents
      *
      * @param  callable(mixed $data): void  $callback
      */
-    public function on(string $event, callable $callback): static
+    public function on(string|UnitEnum $event, callable $callback): static
     {
+        $event = EventName::normalize($event);
+
         $this->throwIfEventNotAllowed($event, "Cannot listen for event '{$event}'.");
 
         Event::listen($this->generateEventName($event), $callback);
@@ -32,8 +35,10 @@ trait HandlesEvents
     /**
      * Emit an event from this object and propagate to first ancestor using the trait
      */
-    public function event(string $event, mixed $data): static
+    public function event(string|UnitEnum $event, mixed $data): static
     {
+        $event = EventName::normalize($event);
+
         $this->throwIfEventNotAllowed($event, "Cannot emit event '{$event}'.");
 
         // Fire event locally
@@ -53,11 +58,13 @@ trait HandlesEvents
      * rather than on every emission: call forwardEvents() from within the
      * scope that should receive the events (calling it again re-captures).
      *
-     * @param  array<int, string>|null  $events
+     * @param  array<int, string|UnitEnum>|null  $events
      */
     public function forwardEvents(?array $events = null): static
     {
-        $this->forwardedEvents = $events ?? $this->getAllowedEvents();
+        $this->forwardedEvents = $events === null
+            ? $this->getAllowedEvents()
+            : array_map(EventName::normalize(...), $events);
         $this->propagationContext = PropagationContext::capture($this, $this->usesHandlesEvents(...));
 
         return $this;
