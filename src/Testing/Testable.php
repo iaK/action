@@ -13,6 +13,7 @@ use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Traits\Conditionable;
 use InvalidArgumentException;
 use LogicException;
 use Mockery;
@@ -29,6 +30,8 @@ use RuntimeException;
  */
 class Testable
 {
+    use Conditionable;
+
     /**
      * @param  TAction  $action
      */

@@ -9,6 +9,7 @@ use Iak\Action\Execution\MemoizedResults;
 use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Traits\Conditionable;
 use Mockery;
 use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
@@ -18,6 +19,7 @@ use Mockery\MockInterface;
  */
 abstract class Action
 {
+    use Conditionable;
     use HandlesEvents;
 
     /**

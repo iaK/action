@@ -18,6 +18,7 @@ use Iak\Action\Execution\Throttle;
 use Iak\Action\Execution\Transactional;
 use Iak\Action\Execution\WithoutOverlapping;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Traits\Conditionable;
 use Throwable;
 
 use function Illuminate\Support\defer;
@@ -43,6 +44,8 @@ use function Illuminate\Support\defer;
  */
 class PendingAction
 {
+    use Conditionable;
+
     /**
      * The fixed nesting order of the execution middleware, outermost first.
      * The order the features were chained in never matters — only this array
