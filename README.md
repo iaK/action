@@ -157,6 +157,41 @@ SendEmailAction::make()
     ->handle($user);
 ```
 
+#### Enum-backed events
+
+Declare the allowed events with an enum instead of strings — every case
+becomes an event, and cases work anywhere an event name goes:
+
+```php
+enum OrderEvent: string
+{
+    case Placed = 'order.placed';
+    case Shipped = 'order.shipped';
+}
+
+#[EmitsEvents(OrderEvent::class)]
+class PlaceOrderAction extends Action
+{
+    public function handle($order)
+    {
+        // ...
+        $this->event(OrderEvent::Placed, $order);
+
+        return $order;
+    }
+}
+
+PlaceOrderAction::make()
+    ->on(OrderEvent::Placed, fn ($order) => Log::info('placed', ['id' => $order->id]))
+    ->handle($order);
+```
+
+String-backed enums use their value as the event name and pure enums use the
+case name, so an enum case and its string are interchangeable — existing
+string listeners keep working. You can also mix cases into the array form:
+`#[EmitsEvents([OrderEvent::Placed, 'legacy-event'])]`. Int-backed enums are
+rejected.
+
 ### Idempotent execution
 
 Run an action at most once per key. The first successful call executes and caches its result; later calls with the same key return the cached result without executing again:
@@ -358,6 +393,16 @@ it('can fake an action', function () {
 });
 ```
 
+`Testable` mirrors your action's own `handle()` signature through a generic
+`@mixin`, so PHPStan checks the arguments and infers the return type. Editors
+that don't resolve generic mixins yet can get the same typing through a
+closure:
+
+```php
+$result = SayHelloAction::test()
+    ->run(fn (SayHelloAction $action) => $action->handle());
+```
+
 ### Mocking Actions in Tests
 
 When testing actions that call other actions, you can control which actions execute their real logic and which are mocked.
@@ -464,6 +509,50 @@ it('tracks queries from nested actions', function () {
         ->queries(CalculateTaxAction::class, function ($queries) {
             expect($queries)->toHaveCount(1);
             expect($queries[0]->query)->toContain('SELECT');
+        })
+        ->handle($orderData);
+});
+```
+
+#### Asserting query counts and N+1s
+
+Chain the query assertions before `handle()` — recording is enabled
+automatically and the checks run once the action completes, failing the test
+with the offending SQL:
+
+```php
+it('does not produce duplicate queries', function () {
+    ProcessOrderAction::test()
+        ->assertNoDuplicateQueries()
+        ->assertQueryCount(5)
+        ->handle($orderData);
+});
+```
+
+Duplicates are grouped by normalized SQL, so an N+1 loop and `whereIn`
+queries with different placeholder counts are caught.
+
+### Testing Events
+
+Record the events an action emits with the `events()` instrument — the same
+shapes as `queries()`/`logs()`:
+
+```php
+it('emits the placed event', function () {
+    PlaceOrderAction::test()
+        ->events(function ($events) {
+            expect($events)->toHaveCount(1);
+            expect($events->first()->is(OrderEvent::Placed))->toBeTrue();
+            expect($events->first()->data)->toBe($order);
+        })
+        ->handle($order);
+});
+
+// Or record events of nested actions resolved during the run:
+it('emits from nested actions', function () {
+    ProcessOrderAction::test()
+        ->events(PlaceOrderAction::class, function ($events) {
+            expect($events->first()->name)->toBe('order.placed');
         })
         ->handle($orderData);
 });
