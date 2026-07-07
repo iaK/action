@@ -2,7 +2,10 @@
 
 namespace Iak\Action;
 
+use DateInterval;
+use DateTimeInterface;
 use Iak\Action\Testing\Testable;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Mockery;
 use Mockery\LegacyMockInterface;
@@ -102,6 +105,33 @@ abstract class Action
         app()->offsetSet($alias ?? static::class, $mock);
 
         return $mock;
+    }
+
+    /**
+     * Wrap the action so handle() runs at most once per idempotency key,
+     * returning the cached result of the first successful run afterwards.
+     *
+     * Only successful runs consume the key; if handle() throws, the exception
+     * propagates and the next call executes again. Keys are scoped per action
+     * class. Pass a TTL (seconds, DateInterval or expiry) to expire the entry,
+     * or null to remember it forever, and a cache store name to override the
+     * default store.
+     *
+     * @return IdempotentAction<static>
+     */
+    public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): IdempotentAction
+    {
+        return new IdempotentAction($this, $key, $ttl, $store);
+    }
+
+    /**
+     * Forget the cached idempotency result for the given key, so the next
+     * idempotent() run for that key executes again. Applies the same
+     * class-scoped key idempotent() uses.
+     */
+    public function forgetIdempotency(string $key, ?string $store = null): void
+    {
+        Cache::store($store)->forget(IdempotentAction::keyFor(static::class, $key));
     }
 
     /**

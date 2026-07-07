@@ -156,6 +156,54 @@ SendEmailAction::make()
     ->handle($user);
 ```
 
+### Idempotent execution
+
+Run an action at most once per key. The first successful call executes and caches its result; later calls with the same key return the cached result without executing again:
+
+```php
+// Executes once. The second call returns the cached result.
+ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($order);
+ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($order);
+```
+
+Choose a key that identifies the unit of work (an order id, a webhook id, a request uuid). Keys are scoped per action class, so two different actions can safely share the same key.
+
+By default the entry is remembered forever on the default cache store. Pass a TTL (seconds, a `DateInterval`, or an expiry `DateTimeInterface`) and/or a cache store name to change that:
+
+```php
+// Cache for one hour on the "redis" store.
+SendReminder::make()->idempotent("reminder:{$user->id}", 3600, 'redis')->handle($user);
+```
+
+Only successful runs consume the key: if `handle()` throws, the exception propagates and the key stays free, so the next call executes again. When the cache store supports locks, concurrent callers are serialised so the action runs only once even under a race.
+
+Bust an entry to allow it to run again:
+
+```php
+ChargeCustomer::make()->forgetIdempotency("charge:{$order->id}");
+```
+
+> On a persistent store (redis, database, file, …) the action's return value is serialized into the cache, so it must be serializable to be replayed. The `array` store keeps values in memory for the current process only.
+
+#### Typed results and autocomplete
+
+The wrapper mirrors your action's own `handle()` signature (via a generic `@mixin`), so PHPStan checks the arguments and infers the return type exactly:
+
+```php
+$order = ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($order);
+// PHPStan knows $order is Order, and flags wrong arguments against ChargeCustomer::handle()
+```
+
+Some editors don't resolve generic mixins yet for in-editor autocomplete (tracked upstream: [PhpStorm](https://youtrack.jetbrains.com/issue/WI-69638), [Intelephense](https://github.com/bmewburn/vscode-intelephense/issues/3280)). If that's you, `run()` gives the same typing through a closure that receives the action — full autocomplete and an inferred return everywhere, today:
+
+```php
+$order = ChargeCustomer::make()
+    ->idempotent("charge:{$order->id}")
+    ->run(fn (ChargeCustomer $action) => $action->handle($order));
+```
+
+Both entry points share the same key and cache entry — pick whichever reads better and switch freely.
+
 ## Testing & debugging
 
 Actions provide helpful static methods for testing and debugging:
