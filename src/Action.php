@@ -126,6 +126,19 @@ abstract class Action
     }
 
     /**
+     * Answer with the closure's value when handle() ultimately throws. The
+     * closure receives the Throwable and may rethrow to decline. See
+     * PendingAction::fallback() for how it composes with the other wrappers.
+     *
+     * @param  \Closure(\Throwable): mixed  $fallback
+     * @return PendingAction<static>
+     */
+    public function fallback(\Closure $fallback): PendingAction
+    {
+        return (new PendingAction($this))->fallback($fallback);
+    }
+
+    /**
      * Re-run handle() when it throws, up to $times total attempts, sleeping
      * the given backoff (milliseconds) between attempts. See
      * PendingAction::retry() for the backoff shapes and the NonRetryable

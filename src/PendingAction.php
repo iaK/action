@@ -5,6 +5,7 @@ namespace Iak\Action;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Retry;
@@ -37,6 +38,7 @@ class PendingAction
      * does — so the composition semantics stay predictable and documentable.
      */
     protected const ORDER = [
+        'fallback',
         'idempotent',
         'retry',
     ];
@@ -72,6 +74,22 @@ class PendingAction
     public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
     {
         $this->middleware['idempotent'] = new Idempotency($this->action::class, $key, $ttl, $store);
+
+        return $this;
+    }
+
+    /**
+     * Answer with the closure's value when handle() ultimately throws —
+     * whatever went wrong: the action itself, exhausted retries, an open
+     * circuit breaker. The closure receives the Throwable and may rethrow to
+     * decline. The fallback value is never cached as an idempotent result.
+     *
+     * @param  Closure(Throwable): mixed  $fallback
+     * @return $this
+     */
+    public function fallback(Closure $fallback): static
+    {
+        $this->middleware['fallback'] = new Fallback($fallback);
 
         return $this;
     }
