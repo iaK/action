@@ -134,7 +134,8 @@ class EmailService
 ```
 
 **How it works:**
-- When `forwardEvents()` is called on an action, events emitted by that action will bubble up through the call stack to the first class that uses the `HandlesEvents` trait
+- When `forwardEvents()` is called on an action, it captures the classes using the `HandlesEvents` trait that are on the call stack at that moment; events emitted by the action are then forwarded to the nearest captured ancestor
+- Call `forwardEvents()` from within the scope that should receive the events (as in the example above); calling it again captures the new scope
 - The parent class (service, action, etc.) must also declare the event in its `#[EmitsEvents(...)]` attribute to receive forwarded events
 - Events can propagate through multiple layers of intermediate classes, as long as the ancestor class uses the `HandlesEvents` trait
 

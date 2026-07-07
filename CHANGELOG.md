@@ -15,6 +15,7 @@ All notable changes to `laravel-action` will be documented in this file.
 - `Memory::formattedMemory()` was replaced by `Memory::size()`, returning a `MemorySize`.
 - `MemoryFormatter` was replaced by the `MemorySize` value object.
 - `only()`, `without()`, `except()`, `profile()`, `queries()` and `logs()` now reject container aliases and non-action classes with a clear exception instead of failing later with a fatal error.
+- Event forwarding now resolves its ancestors when `forwardEvents()` is called instead of on every `event()` emission. Call `forwardEvents()` from within the scope that should receive the events — the idiomatic `Action::make()->forwardEvents()->handle()` chain is unaffected, but an action configured in one scope and executed in another now propagates to the ancestors that enclosed the `forwardEvents()` call (calling it again re-captures), no longer to whatever encloses `handle()`. Captured ancestors are held weakly, so forwarding never keeps a service alive, and emitting events no longer walks the call stack.
 
 **Improvements**
 

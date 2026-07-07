@@ -12,6 +12,9 @@ trait HandlesEvents
     /** @var array<string, bool> */
     protected array $propagatedTo = [];
 
+    /** The ancestor chain captured by the most recent forwardEvents() call. */
+    protected ?PropagationContext $propagationContext = null;
+
     /**
      * Listen for an event emitted by this object
      *
@@ -44,29 +47,32 @@ trait HandlesEvents
     }
 
     /**
+     * Enable forwarding and capture the ancestors it will propagate to.
+     *
+     * The trait-using ancestors on the call stack are resolved here, once,
+     * rather than on every emission: call forwardEvents() from within the
+     * scope that should receive the events (calling it again re-captures).
+     *
      * @param  array<int, string>|null  $events
      */
     public function forwardEvents(?array $events = null): static
     {
         $this->forwardedEvents = $events ?? $this->getAllowedEvents();
+        $this->propagationContext = PropagationContext::capture($this, $this->usesHandlesEvents(...));
 
         return $this;
     }
 
     /**
-     * Inspect the call stack for the first trait-capable ancestor and propagate the event
+     * Propagate the event to the nearest captured ancestor that allows it
      */
     protected function propagateToAncestor(string $event, mixed $data): void
     {
-        $trace = debug_backtrace(DEBUG_BACKTRACE_PROVIDE_OBJECT | DEBUG_BACKTRACE_IGNORE_ARGS);
+        foreach ($this->propagationContext?->ancestors() ?? [] as $reference) {
+            $ancestor = $reference->get();
 
-        array_shift($trace);
-
-        foreach ($trace as $frame) {
-            $ancestor = $frame['object'] ?? null;
-
-            if ($ancestor === null || $ancestor === $this) {
-                continue;
+            if ($ancestor === null) {
+                continue; // Captured ancestor has been garbage collected
             }
 
             // Create a unique key for this propagation to prevent circular references
@@ -74,10 +80,6 @@ trait HandlesEvents
 
             if (isset($this->propagatedTo[$propagationKey])) {
                 continue; // Already propagated this event from this object to this ancestor
-            }
-
-            if (! $this->usesHandlesEvents($ancestor)) {
-                continue;
             }
 
             $getAllowedEvents = [$ancestor, 'getAllowedEvents'];
@@ -95,7 +97,7 @@ trait HandlesEvents
                 $emitEvent($event, $data);
             }
 
-            break; // only first trait-capable ancestor
+            break; // only the nearest eligible ancestor
         }
     }
 

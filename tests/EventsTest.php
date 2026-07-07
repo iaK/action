@@ -198,6 +198,123 @@ describe('HandlesEvents Trait', function () {
     });
 });
 
+// Propagation Context Capture Tests
+describe('Propagation Context Capture', function () {
+    it('delivers to ancestors captured when forwardEvents() was called, even after leaving their scope', function () {
+        $eventsReceived = [];
+        $inner = null;
+
+        $ancestor = ClosureAction::make()
+            ->on('test.event.a', function ($data) use (&$eventsReceived) {
+                $eventsReceived[] = $data;
+            });
+
+        // Configure the inner action inside the ancestor's execution scope...
+        $ancestor->handle(function () use (&$inner) {
+            $inner = ClosureAction::make()->forwardEvents(['test.event.a']);
+        });
+
+        // ...but run it later, with no ancestor frame on the call stack.
+        $inner->handle(function ($action) {
+            $action->event('test.event.a', 'captured-data');
+        });
+
+        expect($eventsReceived)->toBe(['captured-data']);
+    });
+
+    it('does not deliver to an ancestor that only encloses execution, not configuration', function () {
+        $eventsReceived = [];
+
+        // Configured at top level: no enclosing trait user to capture.
+        $inner = ClosureAction::make()->forwardEvents(['test.event.a']);
+
+        ClosureAction::make()
+            ->on('test.event.a', function ($data) use (&$eventsReceived) {
+                $eventsReceived[] = $data;
+            })
+            ->handle(function () use ($inner) {
+                $inner->handle(function ($action) {
+                    $action->event('test.event.a', 'emit-scope-data');
+                });
+            });
+
+        expect($eventsReceived)->toBe([]);
+    });
+
+    it('re-captures the propagation context each time forwardEvents() is called', function () {
+        $firstReceived = [];
+        $secondReceived = [];
+        $inner = null;
+
+        ClosureAction::make()
+            ->on('test.event.a', function ($data) use (&$firstReceived) {
+                $firstReceived[] = $data;
+            })
+            ->handle(function () use (&$inner) {
+                $inner = ClosureAction::make()->forwardEvents(['test.event.a']);
+            });
+
+        ClosureAction::make()
+            ->on('test.event.a', function ($data) use (&$secondReceived) {
+                $secondReceived[] = $data;
+            })
+            ->handle(function () use ($inner) {
+                $inner->forwardEvents(['test.event.a']);
+                $inner->handle(function ($action) {
+                    $action->event('test.event.a', 'recaptured-data');
+                });
+            });
+
+        expect($firstReceived)->toBe([]);
+        expect($secondReceived)->toBe(['recaptured-data']);
+    });
+
+    it('propagates to a plain trait-using service, like the README EmailService example', function () {
+        $received = [];
+
+        $service = new #[EmitsEvents(['test.event.a'])] class
+        {
+            use HandlesEvents;
+
+            public function sendWelcomeEmail(): void
+            {
+                ClosureAction::make()
+                    ->forwardEvents(['test.event.a'])
+                    ->handle(function ($action) {
+                        $action->event('test.event.a', 'welcome');
+                    });
+            }
+        };
+
+        $service->on('test.event.a', function ($data) use (&$received) {
+            $received[] = $data;
+        });
+
+        $service->sendWelcomeEmail();
+
+        expect($received)->toBe(['welcome']);
+    });
+
+    it('skips propagation to captured ancestors that have been garbage collected', function () {
+        $inner = null;
+
+        $ancestor = ClosureAction::make();
+        $ancestor->handle(function () use (&$inner) {
+            $inner = ClosureAction::make()->forwardEvents(['test.event.a']);
+        });
+
+        unset($ancestor);
+        gc_collect_cycles();
+
+        // Emitting must neither error nor deliver anywhere.
+        $result = $inner->handle(function ($action) {
+            return $action->event('test.event.a', 'orphaned');
+        });
+
+        expect($result)->toBe($inner);
+    });
+});
+
 // Event Action Integration Tests
 describe('Event Action Integration', function () {
     it('can emit events', function () {
