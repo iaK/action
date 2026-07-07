@@ -415,6 +415,57 @@ class Testable
     }
 
     /**
+     * Assert that the last handle() actually ran the action instead of
+     * serving the idempotency cache. Post-hoc, like Laravel's fakes: act,
+     * then assert. Requires idempotent() and a completed run.
+     *
+     * @return $this
+     */
+    public function assertExecuted(): static
+    {
+        $executed = $this->wasExecuted();
+
+        if ($executed === null) {
+            $this->failAssertion(
+                'Cannot assert the action executed: idempotent() was not configured or handle() has not run yet.'
+            );
+        }
+
+        if ($executed === false) {
+            $this->failAssertion(
+                'Expected the action to execute, but the result was served from the idempotency cache.'
+            );
+        }
+
+        return $this;
+    }
+
+    /**
+     * Assert that the last handle() was served from the idempotency cache
+     * and the action never ran. The mirror image of assertExecuted().
+     *
+     * @return $this
+     */
+    public function assertSkipped(): static
+    {
+        $executed = $this->wasExecuted();
+
+        if ($executed === null) {
+            $this->failAssertion(
+                'Cannot assert the action was skipped: idempotent() was not configured or handle() has not run yet.'
+            );
+        }
+
+        if ($executed === true) {
+            $this->failAssertion(
+                'Expected the result to be served from the idempotency cache, but the action executed.'
+            );
+        }
+
+        return $this;
+    }
+
+    /**
      * Run handle() inside database transactions that are rolled back
      * afterwards: "what would this action do". The instruments still record
      * and report, the result is still returned — only the database work is
