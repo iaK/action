@@ -7,6 +7,7 @@ use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Action;
 use Iak\Action\PendingAction;
+use Iak\Action\Support\Dumper;
 use Iak\Action\Testing\Results\EmittedEvent;
 use Iak\Action\Testing\Results\Entry;
 use Iak\Action\Testing\Results\Profile;
@@ -113,8 +114,14 @@ class Testable
     /** @var array<int, class-string<Action>> */
     protected array $only = [];
 
-    /** @var array<int, Closure(): void> */
-    protected array $queryAssertions = [];
+    /**
+     * Deferred post-run hooks — query assertions and dump reporters. They run
+     * after the instruments have reported, and never run when an idempotent()
+     * cache hit means nothing executed.
+     *
+     * @var array<int, Closure(): void>
+     */
+    protected array $postRunChecks = [];
 
     /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
     protected array $replacedBindings = [];
@@ -281,7 +288,7 @@ class Testable
     {
         $this->instruments['queries']->wrapMainAction = true;
 
-        $this->queryAssertions[] = function (): void {
+        $this->postRunChecks[] = function (): void {
             $duplicates = (new Collection($this->recordedQueries()))
                 ->groupBy(fn (Query $query): string => $query->connection.'|'.$query->normalizedSql())
                 ->filter(fn (Collection $group): bool => $group->count() > 1);
@@ -312,7 +319,7 @@ class Testable
     {
         $this->instruments['queries']->wrapMainAction = true;
 
-        $this->queryAssertions[] = function () use ($count): void {
+        $this->postRunChecks[] = function () use ($count): void {
             $queries = $this->recordedQueries();
 
             if (count($queries) === $count) {
@@ -331,11 +338,211 @@ class Testable
     }
 
     /**
+     * Print every query the run recorded, once the action completes. Enables
+     * query recording for the action under test automatically — no queries()
+     * registration needed. Like the inspection callbacks, the report is
+     * skipped when the idempotency cache serves the result.
+     *
+     * @return $this
+     */
+    public function dumpQueries(): static
+    {
+        return $this->queueDump('queries', fn (): string => $this->formatQueries(), dd: false);
+    }
+
+    /**
+     * dumpQueries(), then stop the process — mirroring DB::ddRawSql().
+     *
+     * @return $this
+     */
+    public function ddQueries(): static
+    {
+        return $this->queueDump('queries', fn (): string => $this->formatQueries(), dd: true);
+    }
+
+    /**
+     * Print every log entry the run recorded, once the action completes.
+     * Enables log recording for the action under test automatically — no
+     * logs() registration needed. Like the inspection callbacks, the report
+     * is skipped when the idempotency cache serves the result.
+     *
+     * @return $this
+     */
+    public function dumpLogs(): static
+    {
+        return $this->queueDump('logs', fn (): string => $this->formatLogs(), dd: false);
+    }
+
+    /**
+     * dumpLogs(), then stop the process — mirroring DB::ddRawSql().
+     *
+     * @return $this
+     */
+    public function ddLogs(): static
+    {
+        return $this->queueDump('logs', fn (): string => $this->formatLogs(), dd: true);
+    }
+
+    /**
+     * Print every event the run emitted, once the action completes. Enables
+     * event recording for the action under test automatically — no events()
+     * registration needed. Like the inspection callbacks, the report is
+     * skipped when the idempotency cache serves the result.
+     *
+     * @return $this
+     */
+    public function dumpEvents(): static
+    {
+        return $this->queueDump('events', fn (): string => $this->formatEvents(), dd: false);
+    }
+
+    /**
+     * dumpEvents(), then stop the process — mirroring DB::ddRawSql().
+     *
+     * @return $this
+     */
+    public function ddEvents(): static
+    {
+        return $this->queueDump('events', fn (): string => $this->formatEvents(), dd: true);
+    }
+
+    /**
+     * Print the profile the run recorded, once the action completes. Enables
+     * profiling for the action under test automatically — no profile()
+     * registration needed. Like the inspection callbacks, the report is
+     * skipped when the idempotency cache serves the result.
+     *
+     * @return $this
+     */
+    public function dumpProfile(): static
+    {
+        return $this->queueDump('profile', fn (): string => $this->formatProfiles(), dd: false);
+    }
+
+    /**
+     * dumpProfile(), then stop the process — mirroring DB::ddRawSql().
+     *
+     * @return $this
+     */
+    public function ddProfile(): static
+    {
+        return $this->queueDump('profile', fn (): string => $this->formatProfiles(), dd: true);
+    }
+
+    /**
      * @return array<int, Query>
      */
     protected function recordedQueries(): array
     {
         return self::ensureResults(Query::class, $this->instruments['queries']->results());
+    }
+
+    /**
+     * Enable the given instrument for the main action and queue a post-run
+     * reporter that prints its formatted report — through dd() when $dd,
+     * stopping the process.
+     *
+     * @param  Closure(): string  $format
+     * @return $this
+     */
+    protected function queueDump(string $instrument, Closure $format, bool $dd): static
+    {
+        $this->instruments[$instrument]->wrapMainAction = true;
+
+        $this->postRunChecks[] = static function () use ($format, $dd): void {
+            $dumper = app(Dumper::class);
+            $report = $format();
+
+            $dd ? $dumper->dd($report) : $dumper->dump($report);
+        };
+
+        return $this;
+    }
+
+    /** @return array<int, Entry> */
+    protected function recordedLogs(): array
+    {
+        return self::ensureResults(Entry::class, $this->instruments['logs']->results());
+    }
+
+    /** @return array<int, EmittedEvent> */
+    protected function recordedEvents(): array
+    {
+        return self::ensureResults(EmittedEvent::class, $this->instruments['events']->results());
+    }
+
+    /** @return array<int, Profile> */
+    protected function recordedProfiles(): array
+    {
+        return self::ensureResults(Profile::class, $this->instruments['profile']->results());
+    }
+
+    protected function formatQueries(): string
+    {
+        $queries = $this->recordedQueries();
+        $total = round(array_sum(array_map(static fn (Query $query): float => $query->time, $queries)), 1);
+
+        $lines = ['[queries] '.count($queries).' recorded ('.$total.'ms total)'];
+
+        foreach ($queries as $index => $query) {
+            $lines[] = ($index + 1).'. '.$query->query.' ['.round($query->time, 1).'ms, '.$query->connection.']';
+        }
+
+        return implode(PHP_EOL, $lines);
+    }
+
+    protected function formatLogs(): string
+    {
+        $logs = $this->recordedLogs();
+
+        $lines = ['[logs] '.count($logs).' recorded'];
+
+        foreach ($logs as $index => $entry) {
+            $lines[] = ($index + 1).'. ['.strtolower($entry->level).'] '.$entry->message
+                .($entry->context === [] ? '' : ' '.self::encode($entry->context));
+        }
+
+        return implode(PHP_EOL, $lines);
+    }
+
+    protected function formatEvents(): string
+    {
+        $events = $this->recordedEvents();
+
+        $lines = ['[events] '.count($events).' emitted'];
+
+        foreach ($events as $index => $event) {
+            $lines[] = ($index + 1).'. '.$event->name
+                .($event->data === null ? '' : ' '.self::encode($event->data));
+        }
+
+        return implode(PHP_EOL, $lines);
+    }
+
+    protected function formatProfiles(): string
+    {
+        $profiles = $this->recordedProfiles();
+
+        $lines = ['[profile] '.count($profiles).' recorded'];
+
+        foreach ($profiles as $index => $profile) {
+            $lines[] = ($index + 1).'. '.$profile->class.': '
+                .round((float) $profile->duration()->totalMilliseconds, 1).'ms, '
+                .'memory '.$profile->memoryUsed()->format().' (peak '.$profile->peakMemory()->format().')';
+        }
+
+        return implode(PHP_EOL, $lines);
+    }
+
+    /**
+     * JSON for the report lines; the debug type when a payload cannot be
+     * encoded (closures, resources).
+     */
+    protected static function encode(mixed $value): string
+    {
+        $json = json_encode($value);
+
+        return $json === false ? get_debug_type($value) : $json;
     }
 
     /**
@@ -622,8 +829,8 @@ class Testable
             $instrument->report();
         }
 
-        foreach ($this->queryAssertions as $assertion) {
-            $assertion();
+        foreach ($this->postRunChecks as $check) {
+            $check();
         }
 
         return $result;
