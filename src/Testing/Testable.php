@@ -24,6 +24,8 @@ use RuntimeException;
 
 /**
  * @template TAction of Action
+ *
+ * @mixin TAction
  */
 class Testable
 {
@@ -432,12 +434,59 @@ class Testable
     }
 
     /**
-     * Execute the action and run any registered inspection callbacks
+     * Intercept handle() and forward any other method call to the wrapped
+     * action. handle() itself is virtual on purpose: the class-level
+     * `@mixin TAction` gives it the wrapped action's real signature in tools
+     * that resolve generic mixins, which a declared handle(mixed ...$args)
+     * would shadow. __call only fires for undefined methods, so Testable's
+     * own API is never intercepted.
+     *
+     * @param  array<array-key, mixed>  $arguments
      */
-    public function handle(mixed ...$args): mixed
+    public function __call(string $method, array $arguments): mixed
+    {
+        if ($method === 'handle') {
+            return $this->execute(fn (): mixed => $this->action->handle(...$arguments));
+        }
+
+        return $this->action->{$method}(...$arguments);
+    }
+
+    /**
+     * Execute the action through a closure that receives the wrapped action:
+     * the typed alternative to handle() for editors that do not resolve
+     * generic mixins yet, with checked arguments and an inferred return type.
+     * The closure runs inside the full instrumented flow (dry-run
+     * transactions and the idempotency wrapper included), exactly like
+     * handle().
+     *
+     * @template TReturn
+     *
+     * @param  Closure(TAction): TReturn  $callback
+     * @return TReturn
+     */
+    public function run(Closure $callback): mixed
+    {
+        // The instrument wrappers erase the closure's return type, so the
+        // result is claimed back as TReturn here - the same trust the
+        // @mixin-typed handle() path implies, made explicit at this boundary.
+        /** @var TReturn $result */
+        $result = $this->execute(fn (): mixed => $callback($this->action));
+
+        return $result;
+    }
+
+    /**
+     * Run the given invocation through the dry-run transactions, the
+     * idempotency wrapper (each when configured) and the instrumented
+     * execution flow.
+     *
+     * @param  Closure(): mixed  $invoke
+     */
+    protected function execute(Closure $invoke): mixed
     {
         if (! $this->dryRun) {
-            return $this->handleThrough($args);
+            return $this->handleThrough($invoke);
         }
 
         $connections = array_map(
@@ -450,7 +499,7 @@ class Testable
         }
 
         try {
-            return $this->handleThrough($args);
+            return $this->handleThrough($invoke);
         } finally {
             // Unwind in reverse so nested begin/rollback pairs match.
             foreach (array_reverse($connections) as $connection) {
@@ -460,38 +509,34 @@ class Testable
     }
 
     /**
-     * The execution flow behind handle(): the idempotency wrapper (when
-     * configured) around the instrumented run.
+     * The execution flow behind handle() and run(): the idempotency wrapper
+     * (when configured) around the instrumented run.
      *
-     * @param  array<array-key, mixed>  $args
+     * @param  Closure(): mixed  $invoke
      */
-    protected function handleThrough(array $args): mixed
+    protected function handleThrough(Closure $invoke): mixed
     {
         if ($this->idempotency !== null) {
             // Wrap the whole instrumented run: a cache hit short-circuits
             // before any mock or proxy is bound, so there is nothing to
             // restore and nothing to report.
-            return $this->idempotency->run(fn (): mixed => $this->handleInstrumented($args));
+            return $this->idempotency->run(fn (): mixed => $this->handleInstrumented($invoke));
         }
 
-        return $this->handleInstrumented($args);
+        return $this->handleInstrumented($invoke);
     }
 
     /**
-     * The instrumented execution flow behind handle().
+     * The instrumented execution flow behind handle() and run().
      *
-     * @param  array<array-key, mixed>  $args
+     * @param  Closure(): mixed  $execute  The innermost invocation of the action
      */
-    protected function handleInstrumented(array $args): mixed
+    protected function handleInstrumented(Closure $execute): mixed
     {
         $this->handleOnly();
         $this->remakeActionForOnly();
 
         $this->intercept();
-
-        $execute = function () use ($args): mixed {
-            return $this->action->handle(...$args);
-        };
 
         // Wrap the execution innermost to outermost. The descriptors are
         // ordered profile, queries, logs, so profiling ends up innermost
