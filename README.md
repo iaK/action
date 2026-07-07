@@ -268,15 +268,50 @@ TransferFunds::make()->transactional(attempts: 2)->handle($from, $to, $amount);
 
 `idempotent()` is transaction-aware on its own: when it runs inside an open database transaction (on the default connection), the key is only consumed once that transaction commits — rolled-back work leaves the key free to retry.
 
+### Memoization and deferred execution
+
+**`memoize(key: null)`** is per-process idempotency: the first successful result per key is remembered for the rest of the request (in a container-scoped store, so nothing leaks between Octane requests or tests) and later calls return it without executing. The key derives from the `handle()` arguments and is scoped per action class:
+
+```php
+// Runs once per request per user, however many places ask.
+$permissions = ResolvePermissions::make()->memoize()->handle($user->id);
+```
+
+Pass an explicit key when the arguments cannot be serialized, or when executing through `run()` (a closure has no argument list to derive a key from). Flush everything with `Action::flushMemoized()`.
+
+**`defer(fn (MyAction $a) => $a->handle(...))`** runs the action after the response has been sent, via Laravel's `defer()`. The whole configured wrapper chain runs at that point — an idempotency key, throttle budget or breaker state is consumed then, not now:
+
+```php
+SendAnalytics::make()
+    ->idempotent("pageview:{$request->fingerprint()}")
+    ->defer(fn (SendAnalytics $action) => $action->handle($event));
+```
+
+### Lifecycle events
+
+Every invocation that goes through the wrapper dispatches plain Laravel events: `ActionStarted`, then `ActionCompleted` (with the result, the duration in milliseconds and the memory delta) or `ActionFailed` (with the exception, which is rethrown). One listener turns every wrapped action into an APM data point:
+
+```php
+Event::listen(function (ActionCompleted $event) {
+    Metrics::timing('action.'.class_basename($event->action), $event->durationMs);
+});
+```
+
+A plain `$action->handle()` call cannot emit them — the base `Action` does not wrap your `handle()` — so `->observed()` exists to opt a call in without any other feature:
+
+```php
+ImportUsers::make()->observed()->handle($file);
+```
+
 #### The nesting order is fixed
 
 Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
 
 ```
-fallback → idempotent → without overlapping → retry → circuit breaker → throttle → transaction → handle()
+fallback → memoize → idempotent → without overlapping → retry → circuit breaker → throttle → transaction → handle()
 ```
 
-Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached as a real result.
+Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached or memoized as a real result.
 
 ## Testing & debugging
 
@@ -520,6 +555,23 @@ it('profiles nested actions', function () {
         ->handle($orderData);
 });
 ```
+
+### Dry runs
+
+`dryRun()` answers "what would this action do": `handle()` runs inside a database transaction that is rolled back afterwards, while the instruments still record and report and the result is still returned:
+
+```php
+$report = GenerateInvoices::test()
+    ->queries(fn ($queries) => dump($queries))
+    ->dryRun()
+    ->handle($period);
+
+// Every INSERT/UPDATE the action performed is now rolled back.
+```
+
+Pass connection names to wrap more than the default connection: `dryRun('tenant', 'shared')`. Chained with `idempotent()`, the key persisted during a dry run is discarded with the rollback — a rehearsal never blocks the real run.
+
+> Only database work is contained. Mail, HTTP calls and cache writes made by the action escape a dry run — it is a diagnostic tool, not a sandbox.
 
 ### Combining Features
 

@@ -11,6 +11,7 @@ use Iak\Action\Testing\Results\Entry;
 use Iak\Action\Testing\Results\Profile;
 use Iak\Action\Testing\Results\Query;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use LogicException;
 use Mockery;
@@ -101,6 +102,19 @@ class Testable
 
     /** @var PendingAction<TAction>|null */
     protected ?PendingAction $idempotency = null;
+
+    /**
+     * Whether handle() runs inside rolled-back database transactions.
+     */
+    protected bool $dryRun = false;
+
+    /**
+     * The connections a dry run wraps in transactions; null means the
+     * default connection.
+     *
+     * @var array<int, string|null>
+     */
+    protected array $dryRunConnections = [null];
 
     protected bool $interceptingOnly = false;
 
@@ -284,9 +298,62 @@ class Testable
     }
 
     /**
+     * Run handle() inside database transactions that are rolled back
+     * afterwards: "what would this action do". The instruments still record
+     * and report, the result is still returned — only the database work is
+     * discarded (on the default connection unless names are given). Anything
+     * transaction-aware rolls back with it: an idempotency key persisted
+     * during a dry run is discarded too. Side effects outside the database
+     * (mail, HTTP, cache writes by the action itself) are NOT contained.
+     *
+     * @return $this
+     */
+    public function dryRun(string ...$connections): static
+    {
+        $this->dryRun = true;
+
+        if ($connections !== []) {
+            $this->dryRunConnections = array_values($connections);
+        }
+
+        return $this;
+    }
+
+    /**
      * Execute the action and run any registered inspection callbacks
      */
     public function handle(mixed ...$args): mixed
+    {
+        if (! $this->dryRun) {
+            return $this->handleThrough($args);
+        }
+
+        $connections = array_map(
+            static fn (?string $name) => DB::connection($name),
+            $this->dryRunConnections
+        );
+
+        foreach ($connections as $connection) {
+            $connection->beginTransaction();
+        }
+
+        try {
+            return $this->handleThrough($args);
+        } finally {
+            // Unwind in reverse so nested begin/rollback pairs match.
+            foreach (array_reverse($connections) as $connection) {
+                $connection->rollBack();
+            }
+        }
+    }
+
+    /**
+     * The execution flow behind handle(): the idempotency wrapper (when
+     * configured) around the instrumented run.
+     *
+     * @param  array<array-key, mixed>  $args
+     */
+    protected function handleThrough(array $args): mixed
     {
         if ($this->idempotency !== null) {
             // Wrap the whole instrumented run: a cache hit short-circuits
