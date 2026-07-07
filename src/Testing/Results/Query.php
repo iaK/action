@@ -20,6 +20,18 @@ class Query
         return CarbonInterval::microseconds($this->time * 1_000_000);
     }
 
+    /**
+     * The SQL with whitespace runs collapsed and placeholder lists reduced to
+     * a single placeholder, so e.g. two whereIn queries with different item
+     * counts read as the same statement. Used to group duplicates.
+     */
+    public function normalizedSql(): string
+    {
+        $sql = preg_replace('/\s+/', ' ', trim($this->query)) ?? $this->query;
+
+        return preg_replace('/\?(?:\s*,\s*\?)+/', '?', $sql) ?? $sql;
+    }
+
     public function __toString(): string
     {
         $actionInfo = $this->action ? " | Action: {$this->action}" : '';
