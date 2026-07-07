@@ -19,6 +19,7 @@ use Mockery;
 use Mockery\CompositeExpectation;
 use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Assert;
 use RuntimeException;
 
 /**
@@ -106,6 +107,9 @@ class Testable
 
     /** @var array<int, class-string<Action>> */
     protected array $only = [];
+
+    /** @var array<int, Closure(): void> */
+    protected array $queryAssertions = [];
 
     /** @var array<class-string<Action>, array{concrete: mixed, shared: bool}|null> */
     protected array $replacedBindings = [];
@@ -257,6 +261,91 @@ class Testable
     public function events(Closure|string|array $actions, ?Closure $callback = null): static
     {
         return $this->register($this->instruments['events'], $actions, $callback);
+    }
+
+    /**
+     * Assert that no query recorded during the run executed more than once,
+     * grouping by connection and normalized SQL (whitespace collapsed,
+     * placeholder lists reduced), so classic N+1 patterns fail the test.
+     * Enables query recording for the action under test; the check runs
+     * after handle() completes and covers everything the queries instrument
+     * recorded, nested proxies included. Like the inspection callbacks, it
+     * does not run when the idempotency cache serves the result.
+     */
+    public function assertNoDuplicateQueries(): static
+    {
+        $this->instruments['queries']->wrapMainAction = true;
+
+        $this->queryAssertions[] = function (): void {
+            $duplicates = (new Collection($this->recordedQueries()))
+                ->groupBy(fn (Query $query): string => $query->connection.'|'.$query->normalizedSql())
+                ->filter(fn (Collection $group): bool => $group->count() > 1);
+
+            if ($duplicates->isEmpty()) {
+                return;
+            }
+
+            $lines = $duplicates
+                ->map(fn (Collection $group): string => '['.$group->count().'x] '.$group->first()?->normalizedSql())
+                ->values()
+                ->implode(PHP_EOL);
+
+            $this->failAssertion('Expected no duplicate queries, but found:'.PHP_EOL.$lines);
+        };
+
+        return $this;
+    }
+
+    /**
+     * Assert that exactly the given number of queries was recorded during the
+     * run. Enables query recording for the action under test; the check runs
+     * after handle() completes and covers everything the queries instrument
+     * recorded, nested proxies included. Like the inspection callbacks, it
+     * does not run when the idempotency cache serves the result.
+     */
+    public function assertQueryCount(int $count): static
+    {
+        $this->instruments['queries']->wrapMainAction = true;
+
+        $this->queryAssertions[] = function () use ($count): void {
+            $queries = $this->recordedQueries();
+
+            if (count($queries) === $count) {
+                return;
+            }
+
+            $sql = array_map(fn (Query $query): string => '- '.$query->query, $queries);
+
+            $this->failAssertion(
+                'Expected exactly '.$count.' queries, '.count($queries).' recorded:'
+                .PHP_EOL.implode(PHP_EOL, $sql)
+            );
+        };
+
+        return $this;
+    }
+
+    /**
+     * @return array<int, Query>
+     */
+    protected function recordedQueries(): array
+    {
+        return self::ensureResults(Query::class, $this->instruments['queries']->results());
+    }
+
+    /**
+     * Fail a deferred query assertion: through PHPUnit when it is installed
+     * (a proper test failure), otherwise a plain AssertionError - the Testing
+     * namespace must stay usable on the supported profile-in-prod path where
+     * PHPUnit is absent.
+     */
+    protected function failAssertion(string $message): never
+    {
+        if (class_exists(Assert::class)) {
+            Assert::fail($message);
+        }
+
+        throw new \AssertionError($message);
     }
 
     /**
@@ -432,6 +521,10 @@ class Testable
 
         foreach ($this->instruments as $instrument) {
             $instrument->report();
+        }
+
+        foreach ($this->queryAssertions as $assertion) {
+            $assertion();
         }
 
         return $result;
