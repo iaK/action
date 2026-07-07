@@ -2,6 +2,7 @@
 
 namespace Iak\Action;
 
+use Iak\Action\Execution\MemoizedResults;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
 
@@ -16,5 +17,13 @@ class ActionServiceProvider extends PackageServiceProvider
          */
         $package
             ->name('action');
+    }
+
+    public function packageRegistered(): void
+    {
+        // Scoped, not singleton: Octane workers and the test runner rebuild
+        // it whenever the container is flushed, so memoize() never leaks
+        // results across requests or tests.
+        $this->app->scoped(MemoizedResults::class);
     }
 }

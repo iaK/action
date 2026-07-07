@@ -5,15 +5,22 @@ namespace Iak\Action;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Events\ActionCompleted;
+use Iak\Action\Events\ActionFailed;
+use Iak\Action\Events\ActionStarted;
 use Iak\Action\Execution\CircuitBreaker;
 use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
+use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Retry;
 use Iak\Action\Execution\Throttle;
 use Iak\Action\Execution\Transactional;
 use Iak\Action\Execution\WithoutOverlapping;
+use Illuminate\Support\Facades\Event;
 use Throwable;
+
+use function Illuminate\Support\defer;
 
 /**
  * Wraps an action with cross-cutting execution semantics — idempotency and
@@ -43,6 +50,7 @@ class PendingAction
      */
     protected const ORDER = [
         'fallback',
+        'memoize',
         'idempotent',
         'withoutOverlapping',
         'retry',
@@ -121,6 +129,50 @@ class PendingAction
         $this->middleware['retry'] = new Retry($times, $backoff, $when);
 
         return $this;
+    }
+
+    /**
+     * Remember the first successful result per key for the rest of the
+     * process (container-scoped, so Octane and the test runner flush it for
+     * free) and return it without executing on later calls. The key derives
+     * from the handle() arguments — pass one explicitly for unserializable
+     * arguments or when executing through run(). Keys are scoped per action
+     * class. Flush with Action::flushMemoized().
+     *
+     * @return $this
+     */
+    public function memoize(?string $key = null): static
+    {
+        $this->middleware['memoize'] = new Memoize($key);
+
+        return $this;
+    }
+
+    /**
+     * Opt a plain call into the lifecycle events without any other wrapper
+     * feature. Every wrapper-mediated invocation already dispatches
+     * ActionStarted / ActionCompleted / ActionFailed; this exists for calls
+     * that want only the events.
+     *
+     * @return $this
+     */
+    public function observed(): static
+    {
+        return $this;
+    }
+
+    /**
+     * Run the action after the response has been sent, via Laravel's
+     * defer(). The whole configured wrapper chain runs at that point, not
+     * now. The closure receives the wrapped action with full typing — the
+     * same shape as run() — because a deferred call has no immediate result
+     * to return.
+     *
+     * @param  Closure(TAction): mixed  $callback
+     */
+    public function defer(Closure $callback): void
+    {
+        defer(fn (): mixed => $this->run($callback));
     }
 
     /**
@@ -219,7 +271,7 @@ class PendingAction
     public function __call(string $method, array $arguments): mixed
     {
         if ($method === 'handle') {
-            return $this->through(fn (): mixed => $this->action->handle(...$arguments));
+            return $this->through(fn (): mixed => $this->action->handle(...$arguments), $arguments);
         }
 
         return $this->action->{$method}(...$arguments);
@@ -242,19 +294,27 @@ class PendingAction
         // as TReturn here — the same trust the @mixin-typed handle() path
         // implies, made explicit at this single boundary.
         /** @var TReturn $result */
-        $result = $this->through(fn (): mixed => $callback($this->action));
+        $result = $this->through(fn (): mixed => $callback($this->action), null);
 
         return $result;
     }
 
     /**
      * Send the invocation through the configured middleware, nested in the
-     * fixed ORDER (outermost first) regardless of chaining order.
+     * fixed ORDER (outermost first) regardless of chaining order, with the
+     * lifecycle events dispatched around the whole chain.
      *
      * @param  Closure(): mixed  $invoke
+     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
      */
-    protected function through(Closure $invoke): mixed
+    protected function through(Closure $invoke, ?array $args): mixed
     {
+        $memoize = $this->middleware['memoize'] ?? null;
+
+        if ($memoize instanceof Memoize) {
+            $memoize->resolveKey($this->action::class, $args);
+        }
+
         // Wrap innermost to outermost: walking ORDER backwards makes the
         // earliest ORDER entry the outermost layer.
         foreach (array_reverse(static::ORDER) as $slot) {
@@ -268,6 +328,35 @@ class PendingAction
             $invoke = static fn (): mixed => $middleware->handle($next);
         }
 
-        return $invoke();
+        // The events span the whole chain: a cached hit or a rescued run is
+        // a completion of the invocation as the caller sees it.
+        $startedAt = hrtime(true);
+        $memoryBefore = memory_get_usage(true);
+
+        Event::dispatch(new ActionStarted($this->action));
+
+        try {
+            $result = $invoke();
+        } catch (Throwable $e) {
+            Event::dispatch(new ActionFailed(
+                $this->action, $e, $this->elapsedMs($startedAt), memory_get_usage(true) - $memoryBefore
+            ));
+
+            throw $e;
+        }
+
+        Event::dispatch(new ActionCompleted(
+            $this->action, $result, $this->elapsedMs($startedAt), memory_get_usage(true) - $memoryBefore
+        ));
+
+        return $result;
+    }
+
+    /**
+     * Milliseconds elapsed since the given hrtime(true) mark.
+     */
+    protected function elapsedMs(int $startedAt): float
+    {
+        return (hrtime(true) - $startedAt) / 1_000_000;
     }
 }

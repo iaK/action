@@ -5,6 +5,7 @@ namespace Iak\Action;
 use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Execution\Idempotency;
+use Iak\Action\Execution\MemoizedResults;
 use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -164,6 +165,50 @@ abstract class Action
     public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): PendingAction
     {
         return (new PendingAction($this))->circuitBreaker($key, $threshold, $cooldown, $store);
+    }
+
+    /**
+     * Remember the first successful result per key for the rest of the
+     * process and return it without executing on later calls. See
+     * PendingAction::memoize() for the key derivation and run() caveat.
+     *
+     * @return PendingAction<static>
+     */
+    public function memoize(?string $key = null): PendingAction
+    {
+        return (new PendingAction($this))->memoize($key);
+    }
+
+    /**
+     * Forget every memoized action result in this process.
+     */
+    public static function flushMemoized(): void
+    {
+        app(MemoizedResults::class)->flush();
+    }
+
+    /**
+     * Opt this call into the ActionStarted / ActionCompleted / ActionFailed
+     * lifecycle events without any other wrapper feature. (Any wrapper
+     * feature dispatches them already; plain handle() calls cannot.)
+     *
+     * @return PendingAction<static>
+     */
+    public function observed(): PendingAction
+    {
+        return (new PendingAction($this))->observed();
+    }
+
+    /**
+     * Run the action after the response has been sent, via Laravel's
+     * defer(). The closure receives the action with full typing, like
+     * PendingAction::run().
+     *
+     * @param  \Closure(static): mixed  $callback
+     */
+    public function defer(\Closure $callback): void
+    {
+        (new PendingAction($this))->defer($callback);
     }
 
     /**
