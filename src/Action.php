@@ -154,6 +154,19 @@ abstract class Action
     }
 
     /**
+     * Fail fast while a dependency is broken: after $threshold consecutive
+     * failures handle() throws CircuitOpenException without executing until
+     * the cooldown has passed. See PendingAction::circuitBreaker() for the
+     * key scoping and how it composes with retry().
+     *
+     * @return PendingAction<static>
+     */
+    public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): PendingAction
+    {
+        return (new PendingAction($this))->circuitBreaker($key, $threshold, $cooldown, $store);
+    }
+
+    /**
      * Forget the cached idempotency result for the given key, so the next
      * idempotent() run for that key executes again. Applies the same
      * class-scoped key idempotent() uses.

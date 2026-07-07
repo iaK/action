@@ -5,6 +5,7 @@ namespace Iak\Action;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Execution\CircuitBreaker;
 use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Middleware;
@@ -41,6 +42,7 @@ class PendingAction
         'fallback',
         'idempotent',
         'retry',
+        'circuitBreaker',
     ];
 
     /**
@@ -111,6 +113,27 @@ class PendingAction
     public function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null): static
     {
         $this->middleware['retry'] = new Retry($times, $backoff, $when);
+
+        return $this;
+    }
+
+    /**
+     * Fail fast while a dependency is broken: after $threshold consecutive
+     * failures the breaker opens and handle() throws CircuitOpenException
+     * without executing, until $cooldown seconds have passed — then a single
+     * probe decides whether it closes again. The key defaults to the action
+     * class; give breakers of one shared dependency the same explicit key so
+     * they trip together. Nested inside retry(), every attempt consults and
+     * feeds the breaker, and CircuitOpenException is NonRetryable so retry()
+     * fails fast on an open circuit.
+     *
+     * @return $this
+     */
+    public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): static
+    {
+        $this->middleware['circuitBreaker'] = new CircuitBreaker(
+            $key ?? $this->action::class, $threshold, $cooldown, $store
+        );
 
         return $this;
     }
