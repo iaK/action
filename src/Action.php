@@ -126,6 +126,21 @@ abstract class Action
     }
 
     /**
+     * Re-run handle() when it throws, up to $times total attempts, sleeping
+     * the given backoff (milliseconds) between attempts. See
+     * PendingAction::retry() for the backoff shapes and the NonRetryable
+     * default of the $when filter.
+     *
+     * @param  (\Closure(int, \Throwable): int)|int|array<int, int>  $backoff
+     * @param  (\Closure(\Throwable): bool)|null  $when
+     * @return PendingAction<static>
+     */
+    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null): PendingAction
+    {
+        return (new PendingAction($this))->retry($times, $backoff, $when);
+    }
+
+    /**
      * Forget the cached idempotency result for the given key, so the next
      * idempotent() run for that key executes again. Applies the same
      * class-scoped key idempotent() uses.

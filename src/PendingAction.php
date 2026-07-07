@@ -7,6 +7,8 @@ use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Middleware;
+use Iak\Action\Execution\Retry;
+use Throwable;
 
 /**
  * Wraps an action with cross-cutting execution semantics — idempotency and
@@ -36,6 +38,7 @@ class PendingAction
      */
     protected const ORDER = [
         'idempotent',
+        'retry',
     ];
 
     /**
@@ -69,6 +72,27 @@ class PendingAction
     public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
     {
         $this->middleware['idempotent'] = new Idempotency($this->action::class, $key, $ttl, $store);
+
+        return $this;
+    }
+
+    /**
+     * Re-run handle() when it throws, up to $times total attempts, sleeping
+     * the given backoff (milliseconds; a fixed value, a per-attempt schedule
+     * whose last entry repeats, or a closure receiving the attempt number and
+     * the exception) between attempts. $when decides which exceptions are
+     * retried; by default everything is except NonRetryable ones.
+     *
+     * Retrying nests inside idempotent(): failed attempts never consume the
+     * key, and the first successful attempt is the result that gets cached.
+     *
+     * @param  (Closure(int, Throwable): int)|int|array<int, int>  $backoff
+     * @param  (Closure(Throwable): bool)|null  $when
+     * @return $this
+     */
+    public function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null): static
+    {
+        $this->middleware['retry'] = new Retry($times, $backoff, $when);
 
         return $this;
     }
