@@ -185,6 +185,25 @@ ChargeCustomer::make()->forgetIdempotency("charge:{$order->id}");
 
 > On a persistent store (redis, database, file, …) the action's return value is serialized into the cache, so it must be serializable to be replayed. The `array` store keeps values in memory for the current process only.
 
+#### Typed results and autocomplete
+
+The wrapper mirrors your action's own `handle()` signature (via a generic `@mixin`), so PHPStan checks the arguments and infers the return type exactly:
+
+```php
+$order = ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($order);
+// PHPStan knows $order is Order, and flags wrong arguments against ChargeCustomer::handle()
+```
+
+Some editors don't resolve generic mixins yet for in-editor autocomplete (tracked upstream: [PhpStorm](https://youtrack.jetbrains.com/issue/WI-69638), [Intelephense](https://github.com/bmewburn/vscode-intelephense/issues/3280)). If that's you, `run()` gives the same typing through a closure that receives the action — full autocomplete and an inferred return everywhere, today:
+
+```php
+$order = ChargeCustomer::make()
+    ->idempotent("charge:{$order->id}")
+    ->run(fn (ChargeCustomer $action) => $action->handle($order));
+```
+
+Both entry points share the same key and cache entry — pick whichever reads better and switch freely.
+
 ## Testing & debugging
 
 Actions provide helpful static methods for testing and debugging:

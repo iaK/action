@@ -6,7 +6,7 @@ All notable changes to `laravel-action` will be documented in this file.
 
 **New features**
 
-- Idempotent execution: `$action->idempotent($key, $ttl = null, $store = null)->handle(...)` runs the action at most once per key and returns the cached result on later calls. Keys are scoped per action class, results are stored in an envelope so a `null`/`false`/`''` result still counts as executed, only successful runs consume the key (a thrown exception leaves it free to retry), and concurrent callers are serialised with a cache lock when the store supports one. Bust an entry with `$action->forgetIdempotency($key, $store = null)`.
+- Idempotent execution: `$action->idempotent($key, $ttl = null, $store = null)->handle(...)` runs the action at most once per key and returns the cached result on later calls. Keys are scoped per action class, results are stored in an envelope so a `null`/`false`/`''` result still counts as executed, only successful runs consume the key (a thrown exception leaves it free to retry), and concurrent callers are serialised with a cache lock when the store supports one. Bust an entry with `$action->forgetIdempotency($key, $store = null)`. The wrapper mirrors the action's own `handle()` signature via a generic `@mixin` (typed arguments and inferred return in PHPStan); `run(fn (MyAction $a) => $a->handle(...))` offers the same typing through a closure for editors that don't resolve generic mixins yet.
 
 **Breaking changes**
 

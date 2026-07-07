@@ -184,6 +184,64 @@ describe('idempotent()', function () {
         expect($wrapper)->toBeInstanceOf(IdempotentAction::class);
     });
 
+    it('runs once via run() and shares the cache entry with handle()', function () {
+        $count = 0;
+        $closure = function () use (&$count) {
+            $count++;
+
+            return 'value';
+        };
+
+        $action = ClosureAction::make();
+
+        $viaRun = $action->idempotent('run-key')->run(function (ClosureAction $received) use ($action, $closure) {
+            expect($received)->toBe($action);
+
+            return $received->handle($closure);
+        });
+
+        // The same key is already consumed, whichever entry point is used.
+        $viaHandle = $action->idempotent('run-key')->handle($closure);
+        $viaRunAgain = $action->idempotent('run-key')->run(fn (ClosureAction $a) => $a->handle($closure));
+
+        expect($count)->toBe(1);
+        expect($viaRun)->toBe('value');
+        expect($viaHandle)->toBe('value');
+        expect($viaRunAgain)->toBe('value');
+    });
+
+    it('reports wasExecuted() transitions for run()', function () {
+        $wrapper = ClosureAction::make()->idempotent('run-executed-key');
+
+        expect($wrapper->wasExecuted())->toBeNull();
+
+        $wrapper->run(fn (ClosureAction $a) => $a->handle(fn () => 'value'));
+
+        expect($wrapper->wasExecuted())->toBeTrue();
+
+        $wrapper->run(fn (ClosureAction $a) => $a->handle(fn () => 'value'));
+
+        expect($wrapper->wasExecuted())->toBeFalse();
+    });
+
+    it('forwards non-handle calls to the wrapped action', function () {
+        $wrapper = ClosureAction::make()->idempotent('forward-key');
+
+        $wrapper->handle(fn () => 'value');
+
+        // forgetIdempotency() lives on the action; the wrapper forwards it.
+        $wrapper->forgetIdempotency('forward-key');
+
+        $count = 0;
+        ClosureAction::make()->idempotent('forward-key')->handle(function () use (&$count) {
+            $count++;
+
+            return 'value';
+        });
+
+        expect($count)->toBe(1);
+    });
+
     it('works for actions with constructor dependencies', function () {
         $wrapper = InjectingAction::make()->idempotent('dependency-key');
 
