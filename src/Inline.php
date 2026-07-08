@@ -161,7 +161,8 @@ final class Inline
     /**
      * Remember the first successful result per key for the rest of the
      * process. The key is required: a closure argument list can never derive
-     * one. See PendingAction::memoize().
+     * one. All inline actions share one memo namespace (they share one class) — choose keys accordingly.
+     * See PendingAction::memoize().
      *
      * @return PendingAction<InlineAction>
      */

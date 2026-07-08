@@ -46,6 +46,8 @@ final class InlineAction extends Action
      *
      * @param  array<int, string|UnitEnum>  $events
      * @return $this
+     *
+     * @internal Seeded by Inline::events() before the wrapper opens. Calling it mid-chain through the PendingAction mixin would return the bare action and silently drop every configured wrapper — declare events at the entry instead.
      */
     public function allowEvents(array $events): static
     {
