@@ -6,9 +6,11 @@ use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\MemoizedResults;
+use Iak\Action\Execution\Trace;
 use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Traits\Conditionable;
 use Mockery;
 use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
@@ -18,6 +20,7 @@ use Mockery\MockInterface;
  */
 abstract class Action
 {
+    use Conditionable;
     use HandlesEvents;
 
     /**
@@ -147,11 +150,12 @@ abstract class Action
      *
      * @param  (\Closure(int, \Throwable): int)|int|array<int, int>  $backoff
      * @param  (\Closure(\Throwable): bool)|null  $when
+     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value, so many processes retrying together spread out instead of arriving in synchronized waves.
      * @return PendingAction<static>
      */
-    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null): PendingAction
+    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null, bool $jitter = false): PendingAction
     {
-        return (new PendingAction($this))->retry($times, $backoff, $when);
+        return (new PendingAction($this))->retry($times, $backoff, $when, $jitter);
     }
 
     /**
@@ -197,6 +201,41 @@ abstract class Action
     public function observed(): PendingAction
     {
         return (new PendingAction($this))->observed();
+    }
+
+    /**
+     * Record a decision-by-decision trace of the run. See
+     * PendingAction::trace() for the consumers (lastTrace(), the callback,
+     * the lifecycle events).
+     *
+     * @param  (\Closure(Trace): void)|null  $callback
+     * @return PendingAction<static>
+     */
+    public function trace(?\Closure $callback = null): PendingAction
+    {
+        return (new PendingAction($this))->trace($callback);
+    }
+
+    /**
+     * Trace the run and print the summary once it finishes. See
+     * PendingAction::dumpTrace().
+     *
+     * @return PendingAction<static>
+     */
+    public function dumpTrace(): PendingAction
+    {
+        return (new PendingAction($this))->dumpTrace();
+    }
+
+    /**
+     * Trace the run, print the summary and stop the process. See
+     * PendingAction::ddTrace().
+     *
+     * @return PendingAction<static>
+     */
+    public function ddTrace(): PendingAction
+    {
+        return (new PendingAction($this))->ddTrace();
     }
 
     /**

@@ -210,4 +210,46 @@ describe('retry()', function () {
         expect($cached)->toBe('ok');
         expect($count)->toBe(4);
     });
+
+    it('sleeps a random duration up to the scheduled backoff when jitter is enabled', function () {
+        $attempts = 0;
+
+        $flaky = function () use (&$attempts) {
+            $attempts++;
+
+            if ($attempts < 3) {
+                throw new RuntimeException('flaky');
+            }
+
+            return 'done';
+        };
+
+        $result = ClosureAction::make()->retry(times: 3, backoff: 100, jitter: true)->handle($flaky);
+
+        expect($result)->toBe('done');
+        Sleep::assertSleptTimes(2);
+        Sleep::assertSlept(
+            fn ($interval): bool => $interval->totalMilliseconds >= 0
+                && $interval->totalMilliseconds <= 100,
+            times: 2
+        );
+    });
+
+    it('never sleeps for a zero backoff even with jitter enabled', function () {
+        $attempts = 0;
+
+        $flaky = function () use (&$attempts) {
+            $attempts++;
+
+            if ($attempts < 2) {
+                throw new RuntimeException('flaky');
+            }
+
+            return 'done';
+        };
+
+        ClosureAction::make()->retry(times: 2, backoff: 0, jitter: true)->handle($flaky);
+
+        Sleep::assertNeverSlept();
+    });
 });

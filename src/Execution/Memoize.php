@@ -18,6 +18,8 @@ use Throwable;
  */
 class Memoize implements Middleware
 {
+    use TracksTrace;
+
     protected ?string $resolvedKey = null;
 
     public function __construct(protected ?string $key = null) {}
@@ -65,6 +67,8 @@ class Memoize implements Middleware
         $store = app(MemoizedResults::class);
 
         if ($store->has($key)) {
+            $this->recorder?->record('memoize', TraceEvent::MemoizeHit, ['key' => $key]);
+
             return $store->get($key);
         }
 

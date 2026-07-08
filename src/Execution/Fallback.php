@@ -16,6 +16,8 @@ use Throwable;
  */
 class Fallback implements Middleware
 {
+    use TracksTrace;
+
     /**
      * @param  Closure(Throwable): mixed  $fallback
      */
@@ -26,6 +28,8 @@ class Fallback implements Middleware
         try {
             return $next();
         } catch (Throwable $e) {
+            $this->recorder?->record('fallback', TraceEvent::FallbackUsed, ['exception' => $e::class]);
+
             return ($this->fallback)($e);
         }
     }

@@ -23,6 +23,8 @@ use RuntimeException;
  */
 class WithoutOverlapping implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected string $key,
         protected int $wait = 0,
@@ -61,6 +63,8 @@ class WithoutOverlapping implements Middleware
                 "Another run of the [{$this->key}] action holds the overlap lock."
             );
         }
+
+        $this->recorder?->record('withoutOverlapping', TraceEvent::LockAcquired, ['key' => $this->key]);
 
         try {
             return $next();

@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\DB;
  */
 class Idempotency implements Middleware
 {
+    use TracksTrace;
+
     /**
      * Whether the underlying action ran on the last invocation: null before
      * the first call, true if it executed, false if the result was cached.
@@ -67,6 +69,7 @@ class Idempotency implements Middleware
 
         if ($hit) {
             $this->executed = false;
+            $this->recorder?->record('idempotent', TraceEvent::IdempotencyHit, ['key' => $this->key]);
 
             return $result;
         }
@@ -99,6 +102,7 @@ class Idempotency implements Middleware
 
             if ($hit) {
                 $this->executed = false;
+                $this->recorder?->record('idempotent', TraceEvent::IdempotencyHit, ['key' => $this->key]);
 
                 return $result;
             }
@@ -122,6 +126,7 @@ class Idempotency implements Middleware
 
         $this->persist($cache, $cacheKey, ['result' => $result]);
         $this->executed = true;
+        $this->recorder?->record('idempotent', TraceEvent::IdempotencyStored, ['key' => $this->key]);
 
         return $result;
     }

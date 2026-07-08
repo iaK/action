@@ -21,6 +21,8 @@ use InvalidArgumentException;
  */
 class Throttle implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected string $key,
         protected int $allow = 60,
@@ -41,7 +43,11 @@ class Throttle implements Middleware
         $key = $this->limiterKey();
 
         if ($limiter->tooManyAttempts($key, $this->allow)) {
-            throw new ThrottledException($this->key, $limiter->availableIn($key));
+            $availableIn = $limiter->availableIn($key);
+
+            $this->recorder?->record('throttle', TraceEvent::Throttled, ['available_in' => $availableIn]);
+
+            throw new ThrottledException($this->key, $availableIn);
         }
 
         $limiter->hit($key, $this->every);

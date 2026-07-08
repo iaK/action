@@ -15,9 +15,14 @@ use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Retry;
 use Iak\Action\Execution\Throttle;
+use Iak\Action\Execution\Trace;
+use Iak\Action\Execution\TraceEvent;
+use Iak\Action\Execution\TraceRecorder;
 use Iak\Action\Execution\Transactional;
 use Iak\Action\Execution\WithoutOverlapping;
+use Iak\Action\Support\Dumper;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Traits\Conditionable;
 use Throwable;
 
 use function Illuminate\Support\defer;
@@ -43,6 +48,8 @@ use function Illuminate\Support\defer;
  */
 class PendingAction
 {
+    use Conditionable;
+
     /**
      * The fixed nesting order of the execution middleware, outermost first.
      * The order the features were chained in never matters — only this array
@@ -70,6 +77,17 @@ class PendingAction
      * @var array<string, Middleware>
      */
     protected array $middleware = [];
+
+    protected bool $tracing = false;
+
+    /** @var (Closure(Trace): void)|null */
+    protected ?Closure $traceCallback = null;
+
+    protected ?Trace $lastTrace = null;
+
+    protected bool $dumpsTrace = false;
+
+    protected bool $ddsTrace = false;
 
     /**
      * @param  TAction  $action
@@ -122,11 +140,12 @@ class PendingAction
      *
      * @param  (Closure(int, Throwable): int)|int|array<int, int>  $backoff
      * @param  (Closure(Throwable): bool)|null  $when
+     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value, so many processes retrying together spread out instead of arriving in synchronized waves.
      * @return $this
      */
-    public function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null): static
+    public function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null, bool $jitter = false): static
     {
-        $this->middleware['retry'] = new Retry($times, $backoff, $when);
+        $this->middleware['retry'] = new Retry($times, $backoff, $when, $jitter);
 
         return $this;
     }
@@ -158,6 +177,61 @@ class PendingAction
      */
     public function observed(): static
     {
+        return $this;
+    }
+
+    /**
+     * Record a decision-by-decision trace of the next handle()/run(): what
+     * each configured wrapper did and when. Read it afterwards with
+     * lastTrace(), receive it in the optional callback — called after the
+     * run, also when it throws, which is when a trace matters most — and
+     * find it on the lifecycle events (ActionCompleted/ActionFailed::$trace).
+     * Costs nothing unless enabled.
+     *
+     * @param  (Closure(Trace): void)|null  $callback
+     * @return $this
+     */
+    public function trace(?Closure $callback = null): static
+    {
+        $this->tracing = true;
+        $this->traceCallback = $callback;
+
+        return $this;
+    }
+
+    /**
+     * The trace of the most recent traced run — null before one happened or
+     * when tracing is off.
+     */
+    public function lastTrace(): ?Trace
+    {
+        return $this->lastTrace;
+    }
+
+    /**
+     * Print the trace summary once the run finishes — also when it throws.
+     * Implies trace(); chain anywhere before handle()/run().
+     *
+     * @return $this
+     */
+    public function dumpTrace(): static
+    {
+        $this->tracing = true;
+        $this->dumpsTrace = true;
+
+        return $this;
+    }
+
+    /**
+     * dumpTrace(), then stop the process — mirroring DB::ddRawSql().
+     *
+     * @return $this
+     */
+    public function ddTrace(): static
+    {
+        $this->tracing = true;
+        $this->ddsTrace = true;
+
         return $this;
     }
 
@@ -300,20 +374,35 @@ class PendingAction
     }
 
     /**
-     * Send the invocation through the configured middleware, nested in the
-     * fixed ORDER (outermost first) regardless of chaining order, with the
-     * lifecycle events dispatched around the whole chain.
+     * Send the invocation through the configured middleware, attributed in
+     * Laravel's log Context for the duration of the run.
      *
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
      */
     protected function through(Closure $invoke, ?array $args): mixed
     {
+        return ActionContext::within($this->action, fn (): mixed => $this->throughChain($invoke, $args));
+    }
+
+    /**
+     * Send the invocation through the configured middleware, nested in the
+     * fixed ORDER (outermost first) regardless of chaining order, with the
+     * lifecycle events dispatched around the whole chain and the trace
+     * recorded when tracing is enabled.
+     *
+     * @param  Closure(): mixed  $invoke
+     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
+     */
+    protected function throughChain(Closure $invoke, ?array $args): mixed
+    {
         $memoize = $this->middleware['memoize'] ?? null;
 
         if ($memoize instanceof Memoize) {
             $memoize->resolveKey($this->action::class, $args);
         }
+
+        $recorder = $this->tracing ? new TraceRecorder : null;
 
         // Wrap innermost to outermost: walking ORDER backwards makes the
         // earliest ORDER entry the outermost layer.
@@ -322,6 +411,10 @@ class PendingAction
 
             if ($middleware === null) {
                 continue;
+            }
+
+            if ($recorder !== null) {
+                $middleware->traceTo($recorder);
             }
 
             $next = $invoke;
@@ -333,23 +426,76 @@ class PendingAction
         $startedAt = hrtime(true);
         $memoryBefore = memory_get_usage(true);
 
+        $recorder?->record('action', TraceEvent::Started);
         Event::dispatch(new ActionStarted($this->action));
 
         try {
             $result = $invoke();
         } catch (Throwable $e) {
+            $durationMs = $this->elapsedMs($startedAt);
+            $recorder?->record('action', TraceEvent::Failed, [
+                'exception' => $e::class,
+                'duration_ms' => $durationMs,
+            ]);
+            $trace = $this->finishTrace($recorder);
+
             Event::dispatch(new ActionFailed(
-                $this->action, $e, $this->elapsedMs($startedAt), memory_get_usage(true) - $memoryBefore
+                $this->action, $e, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
             ));
+
+            $this->reportTrace($trace);
 
             throw $e;
         }
 
+        $durationMs = $this->elapsedMs($startedAt);
+        $recorder?->record('action', TraceEvent::Completed, ['duration_ms' => $durationMs]);
+        $trace = $this->finishTrace($recorder);
+
         Event::dispatch(new ActionCompleted(
-            $this->action, $result, $this->elapsedMs($startedAt), memory_get_usage(true) - $memoryBefore
+            $this->action, $result, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
         ));
 
+        $this->reportTrace($trace);
+
         return $result;
+    }
+
+    /**
+     * Finalize the recorder into the run's Trace and remember it for
+     * lastTrace(). Null when tracing is off.
+     */
+    protected function finishTrace(?TraceRecorder $recorder): ?Trace
+    {
+        if ($recorder === null) {
+            return null;
+        }
+
+        return $this->lastTrace = $recorder->finish();
+    }
+
+    /**
+     * Hand the finished trace to its consumers: the trace() callback (and,
+     * later in the chain of features, the dump helpers). Runs after the
+     * lifecycle events, on the success and the failure path alike.
+     */
+    protected function reportTrace(?Trace $trace): void
+    {
+        if ($trace === null) {
+            return;
+        }
+
+        if ($this->traceCallback !== null) {
+            ($this->traceCallback)($trace);
+        }
+
+        if ($this->ddsTrace) {
+            app(Dumper::class)->dd($trace->summary());
+        }
+
+        if ($this->dumpsTrace) {
+            app(Dumper::class)->dump($trace->summary());
+        }
     }
 
     /**

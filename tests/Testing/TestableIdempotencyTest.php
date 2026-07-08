@@ -2,6 +2,7 @@
 
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Facades\Cache;
+use PHPUnit\Framework\AssertionFailedError;
 
 beforeEach(function () {
     Cache::flush();
@@ -76,5 +77,41 @@ describe('Testable idempotent()', function () {
         $testable->handle(fn () => 'value');
 
         expect($testable->wasExecuted())->toBeNull();
+    });
+});
+
+describe('assertExecuted() / assertSkipped()', function () {
+    it('assertExecuted() passes after an executing run and fails after a cached one', function () {
+        $first = ClosureAction::test()->idempotent('assert-key');
+        $first->handle(fn (): string => 'v');
+
+        expect($first->assertExecuted())->toBe($first);
+
+        $second = ClosureAction::test()->idempotent('assert-key');
+        $second->handle(fn (): string => 'v');
+
+        expect(fn () => $second->assertExecuted())
+            ->toThrow(AssertionFailedError::class, 'served from the idempotency cache');
+    });
+
+    it('assertSkipped() passes after a cached run and fails after an executing one', function () {
+        $first = ClosureAction::test()->idempotent('skip-key');
+        $first->handle(fn (): string => 'v');
+
+        expect(fn () => $first->assertSkipped())
+            ->toThrow(AssertionFailedError::class, 'but the action executed');
+
+        $second = ClosureAction::test()->idempotent('skip-key');
+        $second->handle(fn (): string => 'v');
+
+        expect($second->assertSkipped())->toBe($second);
+    });
+
+    it('fails with a clear message when idempotent() was not configured or handle() has not run', function () {
+        expect(fn () => ClosureAction::test()->assertExecuted())
+            ->toThrow(AssertionFailedError::class, 'idempotent() was not configured or handle() has not run');
+
+        expect(fn () => ClosureAction::test()->idempotent('never-ran')->assertSkipped())
+            ->toThrow(AssertionFailedError::class, 'idempotent() was not configured or handle() has not run');
     });
 });

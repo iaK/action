@@ -17,15 +17,19 @@ use Throwable;
  */
 class Retry implements Middleware
 {
+    use TracksTrace;
+
     /**
      * @param  int  $times  Total attempts, including the first one.
      * @param  (Closure(int, Throwable): int)|int|array<int, int>  $backoff  Milliseconds to sleep between attempts: a fixed value, a per-attempt schedule (the last entry repeats), or a closure receiving the attempt number and the exception.
      * @param  (Closure(Throwable): bool)|null  $when  Decides entirely whether an exception is retried; null falls back to "everything except NonRetryable".
+     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value, so many processes retrying together spread out instead of arriving in synchronized waves.
      */
     public function __construct(
         protected int $times,
         protected Closure|int|array $backoff = 0,
         protected ?Closure $when = null,
+        protected bool $jitter = false,
     ) {
         if ($times < 1) {
             throw new InvalidArgumentException("retry() needs at least one attempt, got [{$times}].");
@@ -42,6 +46,11 @@ class Retry implements Middleware
             try {
                 return $next();
             } catch (Throwable $e) {
+                $this->recorder?->record('retry', TraceEvent::RetryAttempt, [
+                    'attempt' => $attempt,
+                    'exception' => $e::class,
+                ]);
+
                 if ($attempt >= $this->times || ! $this->shouldRetry($e)) {
                     throw $e;
                 }
@@ -62,15 +71,25 @@ class Retry implements Middleware
 
     /**
      * Sleep the backoff configured for the given (failed) attempt. Uses
-     * Sleep::for(), so tests control time with Sleep::fake().
+     * Sleep::for(), so tests control time with Sleep::fake(). With jitter, a
+     * positive scheduled backoff becomes random_int(0, backoff) — a zero
+     * schedule never sleeps, jitter or not.
      */
     protected function sleep(int $attempt, Throwable $e): void
     {
         $milliseconds = $this->backoffFor($attempt, $e);
 
-        if ($milliseconds > 0) {
-            Sleep::for($milliseconds)->milliseconds();
+        if ($milliseconds <= 0) {
+            return;
         }
+
+        if ($this->jitter) {
+            $milliseconds = random_int(0, $milliseconds);
+        }
+
+        $this->recorder?->record('retry', TraceEvent::RetrySlept, ['milliseconds' => $milliseconds]);
+
+        Sleep::for($milliseconds)->milliseconds();
     }
 
     protected function backoffFor(int $attempt, Throwable $e): int

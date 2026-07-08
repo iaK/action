@@ -27,6 +27,8 @@ use Throwable;
  */
 class CircuitBreaker implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected string $key,
         protected int $threshold = 5,
@@ -51,6 +53,8 @@ class CircuitBreaker implements Middleware
             $availableIn = $state['opened_at'] + $this->cooldown - Carbon::now()->getTimestamp();
 
             if ($availableIn > 0) {
+                $this->recorder?->record('circuitBreaker', TraceEvent::CircuitOpenRejected, ['available_in' => $availableIn]);
+
                 throw new CircuitOpenException($this->key, $availableIn);
             }
 
@@ -74,16 +78,22 @@ class CircuitBreaker implements Middleware
         $store = $cache->getStore();
 
         if (! $store instanceof LockProvider) {
+            $this->recorder?->record('circuitBreaker', TraceEvent::CircuitProbeAllowed);
+
             return $this->attempt($cache, $state, $next);
         }
 
         $lock = $store->lock($this->lockKey(), 10);
 
         if (! $lock->get()) {
+            $this->recorder?->record('circuitBreaker', TraceEvent::CircuitOpenRejected, ['available_in' => 1]);
+
             throw new CircuitOpenException($this->key, 1);
         }
 
         try {
+            $this->recorder?->record('circuitBreaker', TraceEvent::CircuitProbeAllowed);
+
             return $this->attempt($cache, $state, $next);
         } finally {
             $lock->release();
@@ -115,6 +125,10 @@ class CircuitBreaker implements Middleware
 
     protected function recordFailure(Repository $cache, int $failures): void
     {
+        if ($failures >= $this->threshold) {
+            $this->recorder?->record('circuitBreaker', TraceEvent::CircuitTripped, ['failures' => $failures]);
+        }
+
         $cache->forever($this->cacheKey(), [
             'failures' => $failures,
             'opened_at' => $failures >= $this->threshold ? Carbon::now()->getTimestamp() : null,

@@ -16,6 +16,8 @@ use InvalidArgumentException;
  */
 class Transactional implements Middleware
 {
+    use TracksTrace;
+
     public function __construct(
         protected int $attempts = 1,
         protected ?string $connection = null,
@@ -27,8 +29,22 @@ class Transactional implements Middleware
 
     public function handle(Closure $next): mixed
     {
+        $attempt = 0;
+
         // max() restates the constructor guard in a way PHPStan can see
         // (transaction() wants int<1, max>).
-        return DB::connection($this->connection)->transaction(fn (): mixed => $next(), max(1, $this->attempts));
+        $result = DB::connection($this->connection)->transaction(function () use ($next, &$attempt): mixed {
+            $attempt++;
+
+            if ($attempt > 1) {
+                $this->recorder?->record('transactional', TraceEvent::TransactionRetried, ['attempt' => $attempt]);
+            }
+
+            return $next();
+        }, max(1, $this->attempts));
+
+        $this->recorder?->record('transactional', TraceEvent::TransactionCommitted);
+
+        return $result;
     }
 }
