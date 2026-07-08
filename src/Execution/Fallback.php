@@ -28,6 +28,8 @@ class Fallback implements Middleware
         try {
             return $next();
         } catch (Throwable $e) {
+            $this->recorder?->record('fallback', TraceEvent::FallbackUsed, ['exception' => $e::class]);
+
             return ($this->fallback)($e);
         }
     }

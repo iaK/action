@@ -69,6 +69,7 @@ class Idempotency implements Middleware
 
         if ($hit) {
             $this->executed = false;
+            $this->recorder?->record('idempotent', TraceEvent::IdempotencyHit, ['key' => $this->key]);
 
             return $result;
         }
@@ -101,6 +102,7 @@ class Idempotency implements Middleware
 
             if ($hit) {
                 $this->executed = false;
+                $this->recorder?->record('idempotent', TraceEvent::IdempotencyHit, ['key' => $this->key]);
 
                 return $result;
             }
@@ -124,6 +126,7 @@ class Idempotency implements Middleware
 
         $this->persist($cache, $cacheKey, ['result' => $result]);
         $this->executed = true;
+        $this->recorder?->record('idempotent', TraceEvent::IdempotencyStored, ['key' => $this->key]);
 
         return $result;
     }

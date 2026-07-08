@@ -67,6 +67,8 @@ class Memoize implements Middleware
         $store = app(MemoizedResults::class);
 
         if ($store->has($key)) {
+            $this->recorder?->record('memoize', TraceEvent::MemoizeHit, ['key' => $key]);
+
             return $store->get($key);
         }
 

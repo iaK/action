@@ -46,6 +46,11 @@ class Retry implements Middleware
             try {
                 return $next();
             } catch (Throwable $e) {
+                $this->recorder?->record('retry', TraceEvent::RetryAttempt, [
+                    'attempt' => $attempt,
+                    'exception' => $e::class,
+                ]);
+
                 if ($attempt >= $this->times || ! $this->shouldRetry($e)) {
                     throw $e;
                 }
@@ -81,6 +86,8 @@ class Retry implements Middleware
         if ($this->jitter) {
             $milliseconds = random_int(0, $milliseconds);
         }
+
+        $this->recorder?->record('retry', TraceEvent::RetrySlept, ['milliseconds' => $milliseconds]);
 
         Sleep::for($milliseconds)->milliseconds();
     }

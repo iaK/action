@@ -64,6 +64,8 @@ class WithoutOverlapping implements Middleware
             );
         }
 
+        $this->recorder?->record('withoutOverlapping', TraceEvent::LockAcquired, ['key' => $this->key]);
+
         try {
             return $next();
         } finally {

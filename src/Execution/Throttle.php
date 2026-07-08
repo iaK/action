@@ -43,7 +43,11 @@ class Throttle implements Middleware
         $key = $this->limiterKey();
 
         if ($limiter->tooManyAttempts($key, $this->allow)) {
-            throw new ThrottledException($this->key, $limiter->availableIn($key));
+            $availableIn = $limiter->availableIn($key);
+
+            $this->recorder?->record('throttle', TraceEvent::Throttled, ['available_in' => $availableIn]);
+
+            throw new ThrottledException($this->key, $availableIn);
         }
 
         $limiter->hit($key, $this->every);
