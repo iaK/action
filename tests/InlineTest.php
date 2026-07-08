@@ -6,6 +6,7 @@ use Iak\Action\Events\ActionStarted;
 use Iak\Action\Execution\TraceEvent;
 use Iak\Action\Inline;
 use Iak\Action\InlineAction;
+use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Defer\DeferredCallbackCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
@@ -169,5 +170,29 @@ describe('inline wrappers', function () {
 
         expect($chain->lastTrace())->not->toBeNull();
         expect($chain->lastTrace()->has(TraceEvent::IdempotencyStored))->toBeTrue();
+    });
+});
+
+describe('inline keyless guards', function () {
+    it('rejects keyless class-scoped wrappers chained onto an inline action', function (string $method) {
+        expect(fn () => Inline::retry()->{$method}())
+            ->toThrow(InvalidArgumentException::class, 'explicit key');
+    })->with(['circuitBreaker', 'throttle', 'withoutOverlapping', 'memoize']);
+
+    it('accepts the same wrappers with an explicit key', function () {
+        $result = Inline::retry()
+            ->circuitBreaker('guarded-cb')
+            ->throttle('guarded-throttle')
+            ->handle(fn () => 'ok');
+
+        expect($result)->toBe('ok');
+    });
+
+    it('keeps the class-derived default key for class-based actions', function () {
+        $closure = fn () => 'ok';
+
+        expect(ClosureAction::make()->circuitBreaker()->handle($closure))->toBe('ok');
+        expect(ClosureAction::make()->throttle()->handle($closure))->toBe('ok');
+        expect(ClosureAction::make()->withoutOverlapping()->handle($closure))->toBe('ok');
     });
 });
