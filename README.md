@@ -444,6 +444,64 @@ While developing, print the timeline directly with `->dumpTrace()`, or
 SyncInventory::make()->retry(3)->dumpTrace()->handle($sku);
 ```
 
+### Inline actions
+
+Sometimes a flow is too small for a class of its own but still deserves the
+pipeline. `Inline` runs a closure through the same wrappers — no action class
+required:
+
+```php
+use Iak\Action\Inline;
+
+// bare: attributed in log context, lifecycle events dispatched
+Inline::handle(fn () => $user->sync());
+
+// with wrappers, chained exactly like a class-based action
+Inline::idempotent('sync:'.$user->id)
+    ->retry(3, backoff: 100)
+    ->trace()
+    ->handle(fn () => $user->sync());
+```
+
+The closure receives the underlying action as its argument, which is how you
+emit events; declare them at the entry with `events()` — the fluent twin of
+`#[EmitsEvents]` — and listen with `on()`:
+
+```php
+Inline::events(['report.sent'])
+    ->on('report.sent', fn ($report) => Mail::send(...))
+    ->handle(function ($action) {
+        $report = // ... build the report ...
+        $action->event('report.sent', $report);
+
+        return $report;
+    });
+```
+
+Everything on `PendingAction` works: `retry()`, `fallback()`, `idempotent()`
+(bust with `Inline::forgetIdempotency($key)`), `circuitBreaker()`,
+`throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`,
+`trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`,
+`defer()` and the `run()` escape hatch.
+
+Two things to know:
+
+- **Inline actions share one class** (`InlineAction`), so idempotency keys
+  share one namespace, log context attributes every inline run as
+  `Iak\Action\InlineAction`, and the wrappers that default their key to the
+  action class — `circuitBreaker()`, `throttle()`, `withoutOverlapping()`,
+  `memoize()` — require an explicit key (you get a clear exception
+  otherwise, never a silently shared circuit breaker).
+- **Bare `Inline::handle()` is already wrapper-mediated**, so unlike a bare
+  `$action->handle()` on a class action it dispatches the
+  `ActionStarted`/`ActionCompleted`/`ActionFailed` lifecycle events — as if
+  `observed()` were always chained.
+
+Inline actions don't get constructor injection, `#[EmitsEvents]` ancestor
+propagation or `Action::test()` mocking and instrumentation. The moment you
+want those, promote the closure to a real action class — its body moves into
+`handle()` unchanged.
+
 ## Testing & debugging
 
 Actions provide helpful static methods for testing and debugging:

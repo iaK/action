@@ -23,7 +23,9 @@ use Iak\Action\Execution\WithoutOverlapping;
 use Iak\Action\Support\Dumper;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Traits\Conditionable;
+use InvalidArgumentException;
 use Throwable;
+use UnitEnum;
 
 use function Illuminate\Support\defer;
 
@@ -162,6 +164,7 @@ class PendingAction
      */
     public function memoize(?string $key = null): static
     {
+        $this->guardInlineKey('memoize', $key);
         $this->middleware['memoize'] = new Memoize($key);
 
         return $this;
@@ -177,6 +180,23 @@ class PendingAction
      */
     public function observed(): static
     {
+        return $this;
+    }
+
+    /**
+     * Listen for an event emitted by the wrapped action — and keep the
+     * chain. Without this, on() would forward through __call and return the
+     * action itself, so a wrapper chained after it would silently open a
+     * fresh PendingAction and drop everything configured before it.
+     * Validation stays in the trait: undeclared events throw.
+     *
+     * @param  callable(mixed $data): void  $callback
+     * @return $this
+     */
+    public function on(string|UnitEnum $event, callable $callback): static
+    {
+        $this->action->on($event, $callback);
+
         return $this;
     }
 
@@ -261,6 +281,7 @@ class PendingAction
      */
     public function withoutOverlapping(?string $key = null, int $wait = 0, int $staleAfter = 60, ?string $store = null): static
     {
+        $this->guardInlineKey('withoutOverlapping', $key);
         $this->middleware['withoutOverlapping'] = new WithoutOverlapping(
             $key ?? $this->action::class, $wait, $staleAfter, $store
         );
@@ -279,6 +300,7 @@ class PendingAction
      */
     public function throttle(?string $key = null, int $allow = 60, int $every = 60): static
     {
+        $this->guardInlineKey('throttle', $key);
         $this->middleware['throttle'] = new Throttle($key ?? $this->action::class, $allow, $every);
 
         return $this;
@@ -314,6 +336,7 @@ class PendingAction
      */
     public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): static
     {
+        $this->guardInlineKey('circuitBreaker', $key);
         $this->middleware['circuitBreaker'] = new CircuitBreaker(
             $key ?? $this->action::class, $threshold, $cooldown, $store
         );
@@ -504,5 +527,23 @@ class PendingAction
     protected function elapsedMs(int $startedAt): float
     {
         return (hrtime(true) - $startedAt) / 1_000_000;
+    }
+
+    /**
+     * Inline actions all share one class, so a class-derived default key
+     * would make unrelated inline actions share a breaker, throttle budget,
+     * mutex or memo entry — five failures in one inline action would open
+     * the circuit for every other one. Fail loudly at configuration time
+     * instead of silently cross-talking at run time.
+     */
+    protected function guardInlineKey(string $method, ?string $key): void
+    {
+        if ($key === null && $this->action instanceof InlineAction) {
+            throw new InvalidArgumentException(
+                "{$method}() needs an explicit key on an inline action: all inline actions "
+                .'share one class, so the class-derived default key would be shared with '
+                ."every other inline action in the app. Pass a key: {$method}('my-key')."
+            );
+        }
     }
 }
