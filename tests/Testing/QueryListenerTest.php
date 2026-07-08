@@ -35,6 +35,20 @@ describe('QueryListener', function () {
         expect($listener->getCallCount())->toBe(1);
     });
 
+    it('is not kept alive by the query listener registered with the connection', function () {
+        $listener = new QueryListener;
+
+        $listener->listen(function () {
+            DB::select('SELECT 1');
+        });
+
+        $reference = WeakReference::create($listener);
+        unset($listener);
+        gc_collect_cycles();
+
+        expect($reference->get())->toBeNull();
+    });
+
     it('captures queries during listening', function () {
         $listener = new QueryListener;
 

@@ -10,6 +10,7 @@ class Query
         public string $query,
         /** @var array<mixed> */
         public array $bindings,
+        /** Execution time in seconds; use duration() for a unit-safe interval. */
         public float $time,
         public string $connection = 'default',
         public ?string $action = null

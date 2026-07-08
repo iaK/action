@@ -4,6 +4,7 @@ use Iak\Action\EmitsEvents;
 use Iak\Action\HandlesEvents;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\ClosureActionChild;
+use Iak\Action\Tests\TestClasses\ComposesHandlesEvents;
 use Illuminate\Container\Container;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Event;
@@ -112,6 +113,24 @@ describe('HandlesEvents Trait', function () {
             });
 
         expect($eventsReceived)->toContain('test-data');
+    });
+
+    it('only forwards the events named in forwardEvents()', function () {
+        $received = [];
+
+        ClosureAction::make()
+            ->on('test.event.b', function ($data) use (&$received) {
+                $received[] = $data;
+            })
+            ->handle(function () {
+                ClosureAction::make()
+                    ->forwardEvents(['test.event.a'])
+                    ->handle(function ($action) {
+                        $action->event('test.event.b', 'data-b');
+                    });
+            });
+
+        expect($received)->toBe([]);
     });
 
     it('forward events with null uses allowed events', function () {
@@ -293,6 +312,32 @@ describe('Propagation Context Capture', function () {
         $service->sendWelcomeEmail();
 
         expect($received)->toBe(['welcome']);
+    });
+
+    it('propagates to an ancestor that composes HandlesEvents through an intermediate trait', function () {
+        $received = [];
+
+        $service = new #[EmitsEvents(['test.event.a'])] class
+        {
+            use ComposesHandlesEvents;
+
+            public function sendWelcomeEmail(): void
+            {
+                ClosureAction::make()
+                    ->forwardEvents(['test.event.a'])
+                    ->handle(function ($action) {
+                        $action->event('test.event.a', 'composed');
+                    });
+            }
+        };
+
+        $service->on('test.event.a', function ($data) use (&$received) {
+            $received[] = $data;
+        });
+
+        $service->sendWelcomeEmail();
+
+        expect($received)->toBe(['composed']);
     });
 
     it('skips propagation to captured ancestors that have been garbage collected', function () {

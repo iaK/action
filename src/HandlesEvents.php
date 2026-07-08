@@ -33,7 +33,8 @@ trait HandlesEvents
     }
 
     /**
-     * Emit an event from this object and propagate to first ancestor using the trait
+     * Emit an event from this object and, when the event is among the
+     * forwarded ones, propagate it to the first ancestor using the trait
      */
     public function event(string|UnitEnum $event, mixed $data): static
     {
@@ -44,7 +45,7 @@ trait HandlesEvents
         // Fire event locally
         event($this->generateEventName($event), [$data]);
 
-        if (! empty($this->forwardedEvents)) {
+        if (in_array($event, $this->forwardedEvents, true)) {
             $this->propagateToAncestor($event, $data);
         }
 
@@ -58,7 +59,7 @@ trait HandlesEvents
      * rather than on every emission: call forwardEvents() from within the
      * scope that should receive the events (calling it again re-captures).
      *
-     * @param  array<int, string|UnitEnum>|null  $events
+     * @param  array<int, string|UnitEnum>|null  $events  The events to forward; null forwards every event the object declares as allowed.
      */
     public function forwardEvents(?array $events = null): static
     {
@@ -120,7 +121,9 @@ trait HandlesEvents
     protected static array $usesHandlesEventsCache = [];
 
     /**
-     * Determine if the object uses the HandlesEvents trait anywhere in its class hierarchy
+     * Determine if the object uses the HandlesEvents trait anywhere in its
+     * class hierarchy, including through intermediate traits — class_uses()
+     * alone would miss a user trait that composes HandlesEvents.
      */
     protected function usesHandlesEvents(object $object): bool
     {
@@ -130,17 +133,9 @@ trait HandlesEvents
             return self::$usesHandlesEventsCache[$class];
         }
 
-        $current = $class;
-        $uses = false;
-
-        do {
-            if (in_array(HandlesEvents::class, class_uses($current) ?: [], true)) {
-                $uses = true;
-                break;
-            }
-        } while ($current = get_parent_class($current));
-
-        return self::$usesHandlesEventsCache[$class] = $uses;
+        return self::$usesHandlesEventsCache[$class] = in_array(
+            HandlesEvents::class, class_uses_recursive($class), true
+        );
     }
 
     /**
