@@ -6,6 +6,7 @@ use DateInterval;
 use DateTimeInterface;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\MemoizedResults;
+use Iak\Action\Execution\Trace;
 use Iak\Action\Testing\Testable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
@@ -200,6 +201,19 @@ abstract class Action
     public function observed(): PendingAction
     {
         return (new PendingAction($this))->observed();
+    }
+
+    /**
+     * Record a decision-by-decision trace of the run. See
+     * PendingAction::trace() for the consumers (lastTrace(), the callback,
+     * the lifecycle events).
+     *
+     * @param  (\Closure(Trace): void)|null  $callback
+     * @return PendingAction<static>
+     */
+    public function trace(?\Closure $callback = null): PendingAction
+    {
+        return (new PendingAction($this))->trace($callback);
     }
 
     /**

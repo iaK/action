@@ -15,6 +15,9 @@ use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Retry;
 use Iak\Action\Execution\Throttle;
+use Iak\Action\Execution\Trace;
+use Iak\Action\Execution\TraceEvent;
+use Iak\Action\Execution\TraceRecorder;
 use Iak\Action\Execution\Transactional;
 use Iak\Action\Execution\WithoutOverlapping;
 use Illuminate\Support\Facades\Event;
@@ -73,6 +76,13 @@ class PendingAction
      * @var array<string, Middleware>
      */
     protected array $middleware = [];
+
+    protected bool $tracing = false;
+
+    /** @var (Closure(Trace): void)|null */
+    protected ?Closure $traceCallback = null;
+
+    protected ?Trace $lastTrace = null;
 
     /**
      * @param  TAction  $action
@@ -163,6 +173,34 @@ class PendingAction
     public function observed(): static
     {
         return $this;
+    }
+
+    /**
+     * Record a decision-by-decision trace of the next handle()/run(): what
+     * each configured wrapper did and when. Read it afterwards with
+     * lastTrace(), receive it in the optional callback — called after the
+     * run, also when it throws, which is when a trace matters most — and
+     * find it on the lifecycle events (ActionCompleted/ActionFailed::$trace).
+     * Costs nothing unless enabled.
+     *
+     * @param  (Closure(Trace): void)|null  $callback
+     * @return $this
+     */
+    public function trace(?Closure $callback = null): static
+    {
+        $this->tracing = true;
+        $this->traceCallback = $callback;
+
+        return $this;
+    }
+
+    /**
+     * The trace of the most recent traced run — null before one happened or
+     * when tracing is off.
+     */
+    public function lastTrace(): ?Trace
+    {
+        return $this->lastTrace;
     }
 
     /**
@@ -318,7 +356,8 @@ class PendingAction
     /**
      * Send the invocation through the configured middleware, nested in the
      * fixed ORDER (outermost first) regardless of chaining order, with the
-     * lifecycle events dispatched around the whole chain.
+     * lifecycle events dispatched around the whole chain and the trace
+     * recorded when tracing is enabled.
      *
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
@@ -331,6 +370,8 @@ class PendingAction
             $memoize->resolveKey($this->action::class, $args);
         }
 
+        $recorder = $this->tracing ? new TraceRecorder : null;
+
         // Wrap innermost to outermost: walking ORDER backwards makes the
         // earliest ORDER entry the outermost layer.
         foreach (array_reverse(static::ORDER) as $slot) {
@@ -338,6 +379,10 @@ class PendingAction
 
             if ($middleware === null) {
                 continue;
+            }
+
+            if ($recorder !== null) {
+                $middleware->traceTo($recorder);
             }
 
             $next = $invoke;
@@ -349,23 +394,68 @@ class PendingAction
         $startedAt = hrtime(true);
         $memoryBefore = memory_get_usage(true);
 
+        $recorder?->record('action', TraceEvent::Started);
         Event::dispatch(new ActionStarted($this->action));
 
         try {
             $result = $invoke();
         } catch (Throwable $e) {
+            $durationMs = $this->elapsedMs($startedAt);
+            $recorder?->record('action', TraceEvent::Failed, [
+                'exception' => $e::class,
+                'duration_ms' => $durationMs,
+            ]);
+            $trace = $this->finishTrace($recorder);
+
             Event::dispatch(new ActionFailed(
-                $this->action, $e, $this->elapsedMs($startedAt), memory_get_usage(true) - $memoryBefore
+                $this->action, $e, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
             ));
+
+            $this->reportTrace($trace);
 
             throw $e;
         }
 
+        $durationMs = $this->elapsedMs($startedAt);
+        $recorder?->record('action', TraceEvent::Completed, ['duration_ms' => $durationMs]);
+        $trace = $this->finishTrace($recorder);
+
         Event::dispatch(new ActionCompleted(
-            $this->action, $result, $this->elapsedMs($startedAt), memory_get_usage(true) - $memoryBefore
+            $this->action, $result, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
         ));
 
+        $this->reportTrace($trace);
+
         return $result;
+    }
+
+    /**
+     * Finalize the recorder into the run's Trace and remember it for
+     * lastTrace(). Null when tracing is off.
+     */
+    protected function finishTrace(?TraceRecorder $recorder): ?Trace
+    {
+        if ($recorder === null) {
+            return null;
+        }
+
+        return $this->lastTrace = $recorder->finish();
+    }
+
+    /**
+     * Hand the finished trace to its consumers: the trace() callback (and,
+     * later in the chain of features, the dump helpers). Runs after the
+     * lifecycle events, on the success and the failure path alike.
+     */
+    protected function reportTrace(?Trace $trace): void
+    {
+        if ($trace === null) {
+            return;
+        }
+
+        if ($this->traceCallback !== null) {
+            ($this->traceCallback)($trace);
+        }
     }
 
     /**
