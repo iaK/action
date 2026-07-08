@@ -29,6 +29,8 @@ class InMemoryLogHandler extends AbstractHandler
             $record->channel
         );
 
-        return false; // Don't actually log, just capture
+        // False = not handled, so the record still bubbles to the real
+        // handlers: the instrument captures, it never swallows user logs.
+        return false;
     }
 }
