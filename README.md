@@ -57,6 +57,19 @@ class HomeController extends Controller
 }
 ```
 
+Every builder in the package — `make()`, the execution wrappers and `test()` —
+is conditionable with Laravel's `when()`/`unless()`:
+
+```php
+SendInvoice::make()
+    ->when(app()->isProduction(), fn (SendInvoice $action) => $action->throttle(allow: 30))
+    ->handle($order);
+```
+
+Note that when the condition is false, the call above is a bare `handle()` —
+no wrapper is configured, so it gets no lifecycle events and no log context.
+Chain `observed()` unconditionally if you want those either way.
+
 ### Events
 
 Actions can emit and listen to events:
@@ -256,6 +269,19 @@ $testable->wasExecuted(); // true on the run that executed, false when served fr
 
 On a cache hit nothing executes, so nothing is instrumented and no inspection callbacks fire — `wasExecuted()` tells the runs apart.
 
+After the run, `assertExecuted()` / `assertSkipped()` turn `wasExecuted()`
+into proper test failures with named reasons:
+
+```php
+$testable = SendInvoice::test()->idempotent('order-7');
+
+$testable->handle($order);
+$testable->assertExecuted();
+
+$testable->handle($order);
+$testable->assertSkipped();
+```
+
 ### Retries, fallbacks and circuit breakers
 
 The resilience helpers wrap `handle()` the same way `idempotent()` does, and they all return the same chainable wrapper:
@@ -277,6 +303,15 @@ ChargeCustomer::make()
 ```
 
 **`retry(times: 3, backoff: 0, when: null)`** re-runs `handle()` when it throws, up to `times` total attempts. `backoff` is the pause between attempts in milliseconds: a fixed value, a per-attempt schedule (`[100, 500]` — the last entry repeats), or a closure receiving the attempt number and the exception. Sleeping goes through Laravel's `Sleep`, so tests control it with `Sleep::fake()`. By default every exception is retried except those implementing the `Iak\Action\Exceptions\NonRetryable` marker interface — implement it on your own exceptions to fail fast, or pass a `when:` closure to decide entirely yourself.
+
+When many processes retry against the same recovering dependency, fixed
+backoffs arrive in synchronized waves that knock it over again. `jitter: true`
+spreads them out by sleeping a random duration between zero and the scheduled
+backoff instead of the exact value:
+
+```php
+$action->retry(times: 4, backoff: [100, 400, 800], jitter: true)->handle($order);
+```
 
 **`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action ultimately throws — including after exhausted retries or on an open circuit breaker. Rethrow from the closure to decline.
 
@@ -347,6 +382,67 @@ fallback → memoize → idempotent → without overlapping → retry → circui
 ```
 
 Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached or memoized as a real result.
+
+#### Log context
+
+Every wrapper-mediated run (and every `test()` run) sets the running action's
+class under the `action` key in Laravel's
+[Context](https://laravel.com/docs/context), so log lines written while the
+action runs — including code it calls — carry which action produced them:
+
+```php
+SendInvoice::make()->observed()->handle($order);
+// [2026-07-07 12:00:00] production.INFO: invoice created {"action":"App\\Actions\\SendInvoice"}
+```
+
+Nested actions attribute to the innermost running action, the previous value
+is restored afterwards (also when the run throws), and a pre-existing `action`
+context value survives. A bare `$action->handle()` call never passes through
+package code and gets no context — chain any wrapper (or `observed()`) to opt
+a call in.
+
+### Tracing an execution
+
+Every wrapper makes silent decisions — a retry sleeps, a circuit opens, an
+idempotency key is served from cache. Chain `->trace()` to record them and
+read the timeline back:
+
+```php
+$pending = SyncInventory::make()->retry(3, backoff: 400, jitter: true)->idempotent($sku)->trace();
+
+$pending->handle($sku);
+
+echo $pending->lastTrace()->summary();
+// +0.0ms  started
+// +0.2ms  retry: attempt 1 failed (RuntimeException)
+// +0.3ms  retry: sleeping 231ms
+// +231.8ms  idempotency: result stored for 'sku-42'
+// +232.1ms  completed (232.1ms)
+```
+
+`trace()` also accepts a callback that receives the `Trace` after the run —
+including when it throws, which is exactly when you want it:
+
+```php
+SyncInventory::make()
+    ->retry(3)
+    ->trace(fn (Trace $trace) => Log::debug($trace->summary()))
+    ->handle($sku);
+```
+
+A `Trace` holds ordered `TraceEntry` records — the wrapper slot, a
+`TraceEvent` case, the millisecond offset and the decision's context — with
+`entries()`, `has()`, `count()`, `first()`, `durationMs()` and `summary()`.
+When tracing is enabled the lifecycle events carry the trace too, as
+`ActionCompleted::$trace` / `ActionFailed::$trace` (null otherwise). Tracing
+costs nothing unless enabled.
+
+While developing, print the timeline directly with `->dumpTrace()`, or
+`->ddTrace()` to stop right after the run:
+
+```php
+SyncInventory::make()->retry(3)->dumpTrace()->handle($sku);
+```
 
 ## Testing & debugging
 
@@ -531,6 +627,29 @@ it('does not produce duplicate queries', function () {
 
 Duplicates are grouped by normalized SQL, so an N+1 loop and `whereIn`
 queries with different placeholder counts are caught.
+
+### Dumping instrument output
+
+Chain a dump helper before `handle()` to print what an instrument recorded,
+without wiring an inspection callback — recording is enabled automatically:
+
+```php
+SendInvoice::test()->dumpQueries()->handle($order);
+// [queries] 3 recorded (2.1ms total)
+// 1. select * from orders where id = ? [1.2ms, mysql]
+// 2. select * from lines where order_id in (?, ?) [0.6ms, mysql]
+// 3. update orders set status = ? [0.3ms, mysql]
+```
+
+Each instrument has a pair: `dumpQueries()`/`ddQueries()`,
+`dumpLogs()`/`ddLogs()`, `dumpEvents()`/`ddEvents()` and
+`dumpProfile()`/`ddProfile()`. The `dd*` variants stop the process after
+printing, like `DB::ddRawSql()`. Like the inspection callbacks, the dumps do
+not run when an `idempotent()` cache hit means nothing executed.
+
+When combining dump helpers with the query assertions, chain the dumps first:
+the deferred checks run in chaining order, and a failing assertion stops any
+dump queued after it from printing.
 
 ### Testing Events
 
