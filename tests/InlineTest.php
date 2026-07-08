@@ -6,7 +6,9 @@ use Iak\Action\Events\ActionStarted;
 use Iak\Action\Execution\TraceEvent;
 use Iak\Action\Inline;
 use Iak\Action\InlineAction;
+use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\OrderEvent;
 use Illuminate\Support\Defer\DeferredCallbackCollection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Context;
@@ -194,5 +196,83 @@ describe('inline keyless guards', function () {
         expect(ClosureAction::make()->circuitBreaker()->handle($closure))->toBe('ok');
         expect(ClosureAction::make()->throttle()->handle($closure))->toBe('ok');
         expect(ClosureAction::make()->withoutOverlapping()->handle($closure))->toBe('ok');
+    });
+});
+
+describe('inline events', function () {
+    it('declares, listens and emits end to end', function () {
+        $heard = null;
+
+        Inline::events(['report.sent'])
+            ->on('report.sent', function ($data) use (&$heard) {
+                $heard = $data;
+            })
+            ->handle(fn ($action) => $action->event('report.sent', 'payload'));
+
+        expect($heard)->toBe('payload');
+    });
+
+    it('normalizes enum cases interchangeably with their strings', function () {
+        $heard = null;
+
+        Inline::events([OrderEvent::Placed])
+            ->on('order.placed', function ($data) use (&$heard) {
+                $heard = $data;
+            })
+            ->handle(fn ($action) => $action->event(OrderEvent::Placed, 'enum-payload'));
+
+        expect($heard)->toBe('enum-payload');
+    });
+
+    it('rejects emitting an undeclared event', function () {
+        $emitting = fn () => Inline::events(['report.sent'])
+            ->handle(fn ($action) => $action->event('other.event', null));
+
+        expect($emitting)->toThrow(InvalidArgumentException::class, "Cannot emit event 'other.event'");
+    });
+
+    it('rejects listening for an undeclared event', function () {
+        expect(fn () => Inline::events(['report.sent'])->on('other.event', fn () => null))
+            ->toThrow(InvalidArgumentException::class, "Cannot listen for event 'other.event'");
+    });
+
+    it('rejects all events when none were declared', function () {
+        expect(fn () => Inline::handle(fn ($action) => $action->event('any.event', null)))
+            ->toThrow(InvalidArgumentException::class, "Cannot emit event 'any.event'");
+    });
+
+    it('keeps the chain through on(): wrappers configured before still apply', function () {
+        $count = 0;
+        $closure = function ($action) use (&$count) {
+            $count++;
+
+            return 'result';
+        };
+
+        $first = Inline::events(['e.done'])->idempotent('on-chain')->on('e.done', fn () => null);
+        $second = Inline::events(['e.done'])->idempotent('on-chain')->on('e.done', fn () => null);
+
+        expect($first)->toBeInstanceOf(PendingAction::class);
+        expect($first->handle($closure))->toBe('result');
+        expect($second->handle($closure))->toBe('result');
+        expect($count)->toBe(1);
+        expect($second->wasExecuted())->toBeFalse();
+    });
+
+    it('keeps the chain through on() for class-based actions too', function () {
+        $chain = ClosureAction::make()->idempotent('class-on-chain')->on('test.event.a', fn () => null);
+
+        expect($chain)->toBeInstanceOf(PendingAction::class);
+
+        $count = 0;
+        $closure = function () use (&$count) {
+            $count++;
+
+            return 'ok';
+        };
+
+        expect($chain->handle($closure))->toBe('ok');
+        expect(ClosureAction::make()->idempotent('class-on-chain')->handle($closure))->toBe('ok');
+        expect($count)->toBe(1);
     });
 });

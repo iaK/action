@@ -25,6 +25,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Traits\Conditionable;
 use InvalidArgumentException;
 use Throwable;
+use UnitEnum;
 
 use function Illuminate\Support\defer;
 
@@ -179,6 +180,23 @@ class PendingAction
      */
     public function observed(): static
     {
+        return $this;
+    }
+
+    /**
+     * Listen for an event emitted by the wrapped action — and keep the
+     * chain. Without this, on() would forward through __call and return the
+     * action itself, so a wrapper chained after it would silently open a
+     * fresh PendingAction and drop everything configured before it.
+     * Validation stays in the trait: undeclared events throw.
+     *
+     * @param  callable(mixed $data): void  $callback
+     * @return $this
+     */
+    public function on(string|UnitEnum $event, callable $callback): static
+    {
+        $this->action->on($event, $callback);
+
         return $this;
     }
 

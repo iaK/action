@@ -3,6 +3,7 @@
 namespace Iak\Action;
 
 use Closure;
+use UnitEnum;
 
 /**
  * The concrete action behind Inline: it holds no state of its own and simply
@@ -18,6 +19,14 @@ use Closure;
 final class InlineAction extends Action
 {
     /**
+     * The events this instance may emit. Instance-level on purpose: an
+     * inline action has no class of its own to carry #[EmitsEvents].
+     *
+     * @var array<int, string>
+     */
+    protected array $allowedEvents = [];
+
+    /**
      * Invoke the closure as the action body.
      *
      * @template TReturn
@@ -28,5 +37,33 @@ final class InlineAction extends Action
     public function handle(Closure $closure): mixed
     {
         return $closure($this);
+    }
+
+    /**
+     * Declare the events this inline action may emit — the fluent twin of
+     * the #[EmitsEvents] attribute. Called by Inline::events(); enum cases
+     * normalize like everywhere else in the event API.
+     *
+     * @param  array<int, string|UnitEnum>  $events
+     * @return $this
+     */
+    public function allowEvents(array $events): static
+    {
+        $this->allowedEvents = array_map(EventName::normalize(...), $events);
+
+        return $this;
+    }
+
+    /**
+     * Instance-backed override of the trait's attribute reflection: allowed
+     * events live on the instance here, so the per-class static cache must
+     * not apply. The class is final and never carries #[EmitsEvents], so
+     * the property is the whole truth.
+     *
+     * @return array<int, string>
+     */
+    public function getAllowedEvents(): array
+    {
+        return $this->allowedEvents;
     }
 }

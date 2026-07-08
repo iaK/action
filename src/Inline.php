@@ -8,6 +8,7 @@ use DateTimeInterface;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Trace;
 use Illuminate\Support\Facades\Cache;
+use UnitEnum;
 
 /**
  * Entry points for inline actions: run a closure through the execution
@@ -72,6 +73,25 @@ final class Inline
     public static function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
     {
         return (new PendingAction(new InlineAction))->idempotent($key, $ttl, $store);
+    }
+
+    /**
+     * Declare the events the inline action may emit — the fluent twin of the
+     * #[EmitsEvents] attribute, which needs a class to sit on. Declare at
+     * the entry (a mid-chain ->events() has nothing to forward to and fails
+     * loudly), then listen with ->on() and emit through the closure's action
+     * argument:
+     *
+     *     Inline::events(['report.sent'])
+     *         ->on('report.sent', fn ($report) => ...)
+     *         ->handle(fn ($action) => $action->event('report.sent', $report));
+     *
+     * @param  array<int, string|UnitEnum>  $events
+     * @return PendingAction<InlineAction>
+     */
+    public static function events(array $events): PendingAction
+    {
+        return new PendingAction((new InlineAction)->allowEvents($events));
     }
 
     /**
