@@ -1,6 +1,7 @@
 <?php
 
 use Iak\Action\Support\Dumper;
+use Iak\Action\Testing\Results\Query;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\SpyDumper;
 use Illuminate\Support\Facades\Cache;
@@ -27,6 +28,19 @@ describe('dump helpers', function () {
             ->toContain('[queries] 2 recorded')
             ->toContain('1. SELECT 1')
             ->toContain('2. SELECT 2');
+    });
+
+    it('reports query times in milliseconds', function () {
+        $testable = ClosureAction::test()->dumpQueries();
+
+        // Seed a query directly: Query::$time is seconds (0.0123s = 12.3ms).
+        $testable->addQueries([new Query('SELECT 1', [], 0.0123, 'sqlite')]);
+
+        $testable->handle(fn () => null);
+
+        expect($this->dumper->dumped[0])
+            ->toContain('(12.3ms total)')
+            ->toContain('SELECT 1 [12.3ms, sqlite]');
     });
 
     it('ddQueries() dumps and terminates', function () {

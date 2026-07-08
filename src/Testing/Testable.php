@@ -24,6 +24,7 @@ use Mockery\LegacyMockInterface;
 use Mockery\MockInterface;
 use PHPUnit\Framework\Assert;
 use RuntimeException;
+use UnitEnum;
 
 /**
  * @template TAction of Action
@@ -480,13 +481,14 @@ class Testable
 
     protected function formatQueries(): string
     {
+        // Query::$time is seconds; the report shows milliseconds.
         $queries = $this->recordedQueries();
-        $total = round(array_sum(array_map(static fn (Query $query): float => $query->time, $queries)), 1);
+        $total = round(array_sum(array_map(static fn (Query $query): float => $query->time, $queries)) * 1000, 1);
 
         $lines = ['[queries] '.count($queries).' recorded ('.$total.'ms total)'];
 
         foreach ($queries as $index => $query) {
-            $lines[] = ($index + 1).'. '.$query->query.' ['.round($query->time, 1).'ms, '.$query->connection.']';
+            $lines[] = ($index + 1).'. '.$query->query.' ['.round($query->time * 1000, 1).'ms, '.$query->connection.']';
         }
 
         return implode(PHP_EOL, $lines);
@@ -696,6 +698,34 @@ class Testable
     }
 
     /**
+     * The Action entry points that open (or hand the run to) the production
+     * wrapper. Forwarding one through __call would return a PendingAction —
+     * dropping every configured instrument, dry run and idempotency without
+     * a word, so inspection callbacks silently never fire. Fail loudly
+     * instead; idempotent() is the wrapper Testable supports natively.
+     */
+    protected const WRAPPER_METHODS = [
+        'retry', 'fallback', 'circuitBreaker', 'throttle', 'withoutOverlapping',
+        'transactional', 'memoize', 'observed', 'trace', 'dumpTrace', 'ddTrace', 'defer',
+    ];
+
+    /**
+     * Listen for an event emitted by the action under test — and keep the
+     * chain. Without this, on() would forward through __call and return the
+     * action itself, so anything chained after it would bypass the testable
+     * and silently skip instrumentation. Mirrors PendingAction::on().
+     *
+     * @param  callable(mixed $data): void  $callback
+     * @return $this
+     */
+    public function on(string|UnitEnum $event, callable $callback): static
+    {
+        $this->action->on($event, $callback);
+
+        return $this;
+    }
+
+    /**
      * Intercept handle() and forward any other method call to the wrapped
      * action. handle() itself is virtual on purpose: the class-level
      * `@mixin TAction` gives it the wrapped action's real signature in tools
@@ -709,6 +739,14 @@ class Testable
     {
         if ($method === 'handle') {
             return $this->execute(fn (): mixed => $this->action->handle(...$arguments));
+        }
+
+        if (in_array($method, self::WRAPPER_METHODS, true)) {
+            throw new LogicException(
+                "Testable cannot chain {$method}(): it would forward to the production wrapper "
+                .'and silently skip every configured instrument. Configure execution wrappers on '
+                .$this->action::class.'::make() instead; test() supports idempotent().'
+            );
         }
 
         return $this->action->{$method}(...$arguments);
