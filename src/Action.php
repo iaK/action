@@ -217,6 +217,28 @@ abstract class Action
     }
 
     /**
+     * Trace the run and print the summary once it finishes. See
+     * PendingAction::dumpTrace().
+     *
+     * @return PendingAction<static>
+     */
+    public function dumpTrace(): PendingAction
+    {
+        return (new PendingAction($this))->dumpTrace();
+    }
+
+    /**
+     * Trace the run, print the summary and stop the process. See
+     * PendingAction::ddTrace().
+     *
+     * @return PendingAction<static>
+     */
+    public function ddTrace(): PendingAction
+    {
+        return (new PendingAction($this))->ddTrace();
+    }
+
+    /**
      * Run the action after the response has been sent, via Laravel's
      * defer(). The closure receives the action with full typing, like
      * PendingAction::run().

@@ -20,6 +20,7 @@ use Iak\Action\Execution\TraceEvent;
 use Iak\Action\Execution\TraceRecorder;
 use Iak\Action\Execution\Transactional;
 use Iak\Action\Execution\WithoutOverlapping;
+use Iak\Action\Support\Dumper;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Traits\Conditionable;
 use Throwable;
@@ -83,6 +84,10 @@ class PendingAction
     protected ?Closure $traceCallback = null;
 
     protected ?Trace $lastTrace = null;
+
+    protected bool $dumpsTrace = false;
+
+    protected bool $ddsTrace = false;
 
     /**
      * @param  TAction  $action
@@ -201,6 +206,33 @@ class PendingAction
     public function lastTrace(): ?Trace
     {
         return $this->lastTrace;
+    }
+
+    /**
+     * Print the trace summary once the run finishes — also when it throws.
+     * Implies trace(); chain anywhere before handle()/run().
+     *
+     * @return $this
+     */
+    public function dumpTrace(): static
+    {
+        $this->tracing = true;
+        $this->dumpsTrace = true;
+
+        return $this;
+    }
+
+    /**
+     * dumpTrace(), then stop the process — mirroring DB::ddRawSql().
+     *
+     * @return $this
+     */
+    public function ddTrace(): static
+    {
+        $this->tracing = true;
+        $this->ddsTrace = true;
+
+        return $this;
     }
 
     /**
@@ -455,6 +487,14 @@ class PendingAction
 
         if ($this->traceCallback !== null) {
             ($this->traceCallback)($trace);
+        }
+
+        if ($this->ddsTrace) {
+            app(Dumper::class)->dd($trace->summary());
+        }
+
+        if ($this->dumpsTrace) {
+            app(Dumper::class)->dump($trace->summary());
         }
     }
 

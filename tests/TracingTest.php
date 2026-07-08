@@ -5,7 +5,9 @@ use Iak\Action\Exceptions\CircuitOpenException;
 use Iak\Action\Exceptions\ThrottledException;
 use Iak\Action\Execution\Trace;
 use Iak\Action\Execution\TraceEvent;
+use Iak\Action\Support\Dumper;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\SpyDumper;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Sleep;
@@ -226,5 +228,38 @@ describe('middleware decisions', function () {
 
         expect($pending->lastTrace()?->first(TraceEvent::TransactionRetried)?->context['attempt'])->toBe(2);
         expect($pending->lastTrace()?->has(TraceEvent::TransactionCommitted))->toBeTrue();
+    });
+});
+
+describe('dumpTrace() / ddTrace()', function () {
+    beforeEach(function () {
+        $this->dumper = new SpyDumper;
+        app()->instance(Dumper::class, $this->dumper);
+    });
+
+    it('prints the summary after the run', function () {
+        ClosureAction::make()->dumpTrace()->handle(fn (): string => 'x');
+
+        expect($this->dumper->dumped)->toHaveCount(1);
+        expect($this->dumper->dumped[0])->toContain('started')->toContain('completed');
+    });
+
+    it('prints the summary when the run throws', function () {
+        $throwing = function (): void {
+            throw new RuntimeException('boom');
+        };
+
+        expect(fn () => ClosureAction::make()->dumpTrace()->handle($throwing))
+            ->toThrow(RuntimeException::class, 'boom');
+
+        expect($this->dumper->dumped)->toHaveCount(1);
+        expect($this->dumper->dumped[0])->toContain('failed (RuntimeException)');
+    });
+
+    it('ddTrace() dumps and terminates', function () {
+        expect(fn () => ClosureAction::make()->ddTrace()->handle(fn (): string => 'x'))
+            ->toThrow(RuntimeException::class, 'dd() would have terminated');
+
+        expect($this->dumper->dumped)->toHaveCount(1);
     });
 });
