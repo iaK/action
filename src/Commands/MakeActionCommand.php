@@ -55,24 +55,53 @@ class MakeActionCommand extends Command
         $directory = $this->laravel->basePath(implode('/', [$dir, ...$segments]));
         $namespace = $this->deriveNamespace($dir, $segments);
 
-        $path = $directory.'/'.$class.'.php';
+        $targets = [
+            [
+                'path' => $directory.'/'.$class.'.php',
+                'stub' => $this->option('events') ? 'action.events.stub' : 'action.stub',
+                'label' => 'Action',
+            ],
+        ];
 
-        if (! $this->option('force') && $this->files->exists($path)) {
-            $this->components->error(sprintf('[%s] already exists.', $this->relativePath($path)));
-
-            return self::FAILURE;
+        if ($this->option('events')) {
+            $targets[] = [
+                'path' => $directory.'/'.$class.'Event.php',
+                'stub' => 'action-event.stub',
+                'label' => 'Enum',
+            ];
         }
 
-        $contents = str_replace(
-            ['{{ namespace }}', '{{ class }}'],
-            [$namespace, $class],
-            $this->files->get($this->resolveStubPath('action.stub')),
-        );
+        // Check every target before writing any: --events must never leave
+        // a half-generated action/enum pair behind.
+        if (! $this->option('force')) {
+            foreach ($targets as $target) {
+                if ($this->files->exists($target['path'])) {
+                    $this->components->error(sprintf('[%s] already exists.', $this->relativePath($target['path'])));
+
+                    return self::FAILURE;
+                }
+            }
+        }
+
+        $replacements = [
+            '{{ namespace }}' => $namespace,
+            '{{ class }}' => $class,
+            '{{ event }}' => $class.'Event',
+        ];
 
         $this->files->ensureDirectoryExists($directory);
-        $this->files->put($path, $contents);
 
-        $this->components->info(sprintf('Action [%s] created successfully.', $this->relativePath($path)));
+        foreach ($targets as $target) {
+            $contents = str_replace(
+                array_keys($replacements),
+                array_values($replacements),
+                $this->files->get($this->resolveStubPath($target['stub'])),
+            );
+
+            $this->files->put($target['path'], $contents);
+
+            $this->components->info(sprintf('%s [%s] created successfully.', $target['label'], $this->relativePath($target['path'])));
+        }
 
         return self::SUCCESS;
     }

@@ -93,3 +93,31 @@ it('overwrites an existing action with --force', function () {
     expect(File::get(base_path('app/Actions/ShipOrder.php')))
         ->toContain('class ShipOrder extends Action');
 });
+
+it('generates a companion event enum wired through EmitsEvents', function () {
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--events' => true])
+        ->assertExitCode(0);
+
+    expect(File::get(base_path('app/Actions/ShipOrder.php')))
+        ->toContain('use Iak\Action\EmitsEvents;')
+        ->toContain('#[EmitsEvents(ShipOrderEvent::class)]')
+        ->toContain('class ShipOrder extends Action');
+
+    // The placeholder case is load-bearing: EmitsEvents throws
+    // "Events array cannot be empty" for a case-less enum.
+    expect(File::get(base_path('app/Actions/ShipOrderEvent.php')))
+        ->toContain('namespace App\Actions;')
+        ->toContain('enum ShipOrderEvent: string')
+        ->toContain("case Started = 'started';");
+});
+
+it('writes nothing when only the enum file already exists', function () {
+    File::ensureDirectoryExists(base_path('app/Actions'));
+    File::put(base_path('app/Actions/ShipOrderEvent.php'), 'original');
+
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--events' => true])
+        ->assertExitCode(1);
+
+    expect(File::exists(base_path('app/Actions/ShipOrder.php')))->toBeFalse()
+        ->and(File::get(base_path('app/Actions/ShipOrderEvent.php')))->toBe('original');
+});
