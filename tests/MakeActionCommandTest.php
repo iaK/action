@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\File;
+use PHPUnit\Framework\Assert;
 
 afterEach(function () {
     foreach (['app/Actions', 'app/Domain', 'domain', 'stubs'] as $dir) {
@@ -120,4 +121,28 @@ it('writes nothing when only the enum file already exists', function () {
 
     expect(File::exists(base_path('app/Actions/ShipOrder.php')))->toBeFalse()
         ->and(File::get(base_path('app/Actions/ShipOrderEvent.php')))->toBe('original');
+});
+
+it('prefers an app-published stub in base_path("stubs")', function () {
+    File::ensureDirectoryExists(base_path('stubs'));
+    File::put(base_path('stubs/action.stub'), "<?php\n\n// custom stub {{ class }}\n");
+
+    $this->artisan('make:action', ['name' => 'ShipOrder'])
+        ->assertExitCode(0);
+
+    expect(File::get(base_path('app/Actions/ShipOrder.php')))
+        ->toContain('// custom stub ShipOrder');
+});
+
+it('generates syntactically valid PHP', function () {
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--events' => true])
+        ->assertExitCode(0);
+
+    foreach (['ShipOrder.php', 'ShipOrderEvent.php'] as $file) {
+        $output = [];
+        $status = 1;
+        exec('php -l '.escapeshellarg(base_path('app/Actions/'.$file)).' 2>&1', $output, $status);
+
+        Assert::assertSame(0, $status, implode("\n", $output));
+    }
 });

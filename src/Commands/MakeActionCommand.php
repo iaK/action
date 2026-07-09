@@ -139,9 +139,15 @@ class MakeActionCommand extends Command
         return implode('\\', [...$parts, ...$segments]);
     }
 
+    /**
+     * An application overrides a stub by publishing a same-named file to
+     * its stubs/ directory (Laravel's convention) — no publish command.
+     */
     protected function resolveStubPath(string $stub): string
     {
-        return __DIR__.'/../../stubs/'.$stub;
+        $custom = $this->laravel->basePath('stubs/'.$stub);
+
+        return $this->files->exists($custom) ? $custom : __DIR__.'/../../stubs/'.$stub;
     }
 
     protected function relativePath(string $path): string
