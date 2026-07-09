@@ -1,0 +1,13 @@
+<?php
+
+namespace {{ namespace }};
+
+use Iak\Action\Action;
+
+class {{ class }} extends Action
+{
+    public function handle()
+    {
+        //
+    }
+}

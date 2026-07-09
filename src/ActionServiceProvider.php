@@ -2,6 +2,7 @@
 
 namespace Iak\Action;
 
+use Iak\Action\Commands\MakeActionCommand;
 use Iak\Action\Execution\MemoizedResults;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -16,7 +17,8 @@ class ActionServiceProvider extends PackageServiceProvider
          * More info: https://github.com/spatie/laravel-package-tools
          */
         $package
-            ->name('action');
+            ->name('action')
+            ->hasCommand(MakeActionCommand::class);
     }
 
     public function packageRegistered(): void
