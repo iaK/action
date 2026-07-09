@@ -44,12 +44,20 @@ class MakeActionCommand extends Command
         $class = array_pop($segments);
 
         $dirOption = $this->option('dir');
-        $dir = trim(str_replace('\\', '/', is_string($dirOption) ? $dirOption : ''), '/');
+        $dir = trim(trim(str_replace('\\', '/', is_string($dirOption) ? $dirOption : '')), '/');
 
         if ($dir === '') {
             $this->components->error('A target directory is required.');
 
             return self::FAILURE;
+        }
+
+        foreach (explode('/', $dir) as $dirSegment) {
+            if (trim($dirSegment) === '' || in_array($dirSegment, ['.', '..'], true)) {
+                $this->components->error(sprintf('[%s] is not a valid --dir path segment.', $dirSegment));
+
+                return self::FAILURE;
+            }
         }
 
         $directory = $this->laravel->basePath(implode('/', [$dir, ...$segments]));

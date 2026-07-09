@@ -4,7 +4,7 @@ use Illuminate\Support\Facades\File;
 use PHPUnit\Framework\Assert;
 
 afterEach(function () {
-    foreach (['app/Actions', 'app/Domain', 'domain', 'stubs'] as $dir) {
+    foreach (['app/Actions', 'app/Domain', 'domain', 'stubs', 'secret'] as $dir) {
         File::deleteDirectory(base_path($dir));
     }
 });
@@ -145,4 +145,21 @@ it('generates syntactically valid PHP', function () {
 
         Assert::assertSame(0, $status, implode("\n", $output));
     }
+});
+
+it('rejects a whitespace-only --dir', function () {
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--dir' => '   '])
+        ->assertExitCode(1);
+});
+
+it('rejects --dir path traversal segments', function () {
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--dir' => 'app/../secret'])
+        ->assertExitCode(1);
+
+    expect(File::exists(base_path('secret/ShipOrder.php')))->toBeFalse();
+});
+
+it('rejects a --dir of only dot segments', function () {
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--dir' => '..'])
+        ->assertExitCode(1);
 });
