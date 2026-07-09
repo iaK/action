@@ -24,15 +24,36 @@ class MakeActionCommand extends Command
 
     public function handle(): int
     {
-        $class = $this->argument('name');
-        $dirOption = $this->option('dir');
-        if (! is_string($dirOption)) {
-            $dirOption = 'app/Actions';
-        }
-        $dir = trim(str_replace('\\', '/', $dirOption), '/');
+        $name = str_replace('\\', '/', $this->argument('name'));
+        $segments = array_values(array_filter(explode('/', $name), static fn (string $part): bool => $part !== ''));
 
-        $directory = $this->laravel->basePath($dir);
-        $namespace = $this->deriveNamespace($dir);
+        if ($segments === []) {
+            $this->components->error('A class name is required.');
+
+            return self::FAILURE;
+        }
+
+        foreach ($segments as $segment) {
+            if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $segment) !== 1) {
+                $this->components->error(sprintf('[%s] is not a valid PHP class name.', $segment));
+
+                return self::FAILURE;
+            }
+        }
+
+        $class = array_pop($segments);
+
+        $dirOption = $this->option('dir');
+        $dir = trim(str_replace('\\', '/', is_string($dirOption) ? $dirOption : ''), '/');
+
+        if ($dir === '') {
+            $this->components->error('A target directory is required.');
+
+            return self::FAILURE;
+        }
+
+        $directory = $this->laravel->basePath(implode('/', [$dir, ...$segments]));
+        $namespace = $this->deriveNamespace($dir, $segments);
 
         $path = $directory.'/'.$class.'.php';
 
@@ -56,8 +77,11 @@ class MakeActionCommand extends Command
      * App\Domain); anything else is a best-effort studly-casing of the
      * path segments (domain/actions -> Domain\Actions). The fallback also
      * covers apps whose container is not a full Foundation application.
+     * Nested name segments extend the namespace as-is.
+     *
+     * @param  list<string>  $segments
      */
-    protected function deriveNamespace(string $dir): string
+    protected function deriveNamespace(string $dir, array $segments): string
     {
         $app = $this->laravel;
         $target = $app->basePath($dir);
@@ -77,7 +101,7 @@ class MakeActionCommand extends Command
             );
         }
 
-        return implode('\\', $parts);
+        return implode('\\', [...$parts, ...$segments]);
     }
 
     protected function resolveStubPath(string $stub): string

@@ -39,3 +39,36 @@ it('derives a studly namespace for a --dir outside the app path', function () {
     expect(File::get(base_path('domain/actions/ShipOrder.php')))
         ->toContain('namespace Domain\Actions;');
 });
+
+it('supports nested names, creating subdirectories and subnamespaces', function () {
+    $this->artisan('make:action', ['name' => 'Orders/ShipOrder'])
+        ->assertExitCode(0);
+
+    expect(File::get(base_path('app/Actions/Orders/ShipOrder.php')))
+        ->toContain('namespace App\Actions\Orders;')
+        ->toContain('class ShipOrder extends Action');
+});
+
+it('accepts backslash-separated nested names', function () {
+    $this->artisan('make:action', ['name' => 'Orders\\ShipOrder'])
+        ->assertExitCode(0);
+
+    expect(File::exists(base_path('app/Actions/Orders/ShipOrder.php')))->toBeTrue();
+});
+
+it('rejects a name segment that is not a valid PHP class name', function () {
+    $this->artisan('make:action', ['name' => 'Ship-Order'])
+        ->assertExitCode(1);
+
+    expect(File::exists(base_path('app/Actions/Ship-Order.php')))->toBeFalse();
+});
+
+it('rejects an empty name', function () {
+    $this->artisan('make:action', ['name' => ''])
+        ->assertExitCode(1);
+});
+
+it('rejects an empty --dir', function () {
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--dir' => ''])
+        ->assertExitCode(1);
+});
