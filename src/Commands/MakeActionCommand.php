@@ -57,6 +57,12 @@ class MakeActionCommand extends Command
 
         $path = $directory.'/'.$class.'.php';
 
+        if (! $this->option('force') && $this->files->exists($path)) {
+            $this->components->error(sprintf('[%s] already exists.', $this->relativePath($path)));
+
+            return self::FAILURE;
+        }
+
         $contents = str_replace(
             ['{{ namespace }}', '{{ class }}'],
             [$namespace, $class],

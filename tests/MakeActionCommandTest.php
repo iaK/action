@@ -72,3 +72,24 @@ it('rejects an empty --dir', function () {
     $this->artisan('make:action', ['name' => 'ShipOrder', '--dir' => ''])
         ->assertExitCode(1);
 });
+
+it('refuses to overwrite an existing action', function () {
+    File::ensureDirectoryExists(base_path('app/Actions'));
+    File::put(base_path('app/Actions/ShipOrder.php'), 'original');
+
+    $this->artisan('make:action', ['name' => 'ShipOrder'])
+        ->assertExitCode(1);
+
+    expect(File::get(base_path('app/Actions/ShipOrder.php')))->toBe('original');
+});
+
+it('overwrites an existing action with --force', function () {
+    File::ensureDirectoryExists(base_path('app/Actions'));
+    File::put(base_path('app/Actions/ShipOrder.php'), 'original');
+
+    $this->artisan('make:action', ['name' => 'ShipOrder', '--force' => true])
+        ->assertExitCode(0);
+
+    expect(File::get(base_path('app/Actions/ShipOrder.php')))
+        ->toContain('class ShipOrder extends Action');
+});
