@@ -13,6 +13,7 @@ use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
+use Iak\Action\Execution\Once;
 use Iak\Action\Execution\Retry;
 use Iak\Action\Execution\Throttle;
 use Iak\Action\Execution\Trace;
@@ -61,6 +62,7 @@ class PendingAction
         'fallback',
         'memoize',
         'idempotent',
+        'once',
         'withoutOverlapping',
         'retry',
         'circuitBreaker',
@@ -103,13 +105,30 @@ class PendingAction
      * Run handle() at most once per idempotency key, returning the cached
      * result of the first successful run afterwards. Only successful runs
      * consume the key; if handle() throws, the exception propagates and the
-     * next call executes again. Keys are scoped per action class.
+     * next call executes again. The key is used verbatim as the cache key.
      *
      * @return $this
      */
     public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
     {
-        $this->middleware['idempotent'] = new Idempotency($this->action::class, $key, $ttl, $store);
+        $this->middleware['idempotent'] = new Idempotency($key, $ttl, $store);
+
+        return $this;
+    }
+
+    /**
+     * Run handle() at most once per key, keeping nothing but the key: the
+     * first successful run consumes it and every later call is skipped,
+     * answering null — unlike idempotent() no result is cached or replayed.
+     * The key is used verbatim as the cache key, and any existing entry
+     * under it counts as consumed, whoever wrote it. Only successful runs
+     * consume the key; if handle() throws, the key stays free.
+     *
+     * @return $this
+     */
+    public function once(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
+    {
+        $this->middleware['once'] = new Once($key, $ttl, $store);
 
         return $this;
     }
@@ -346,14 +365,21 @@ class PendingAction
 
     /**
      * Whether the underlying action ran on the last handle() call: null when
-     * idempotent() is not configured (or before handle() runs), true if it
-     * executed, false if the result was served from the idempotency cache.
+     * neither idempotent() nor once() is configured (or before handle()
+     * runs), true if it executed, false if the call was served from the
+     * idempotency cache or skipped on a consumed once() key.
      */
     public function wasExecuted(): ?bool
     {
         $idempotency = $this->middleware['idempotent'] ?? null;
 
-        return $idempotency instanceof Idempotency ? $idempotency->wasExecuted() : null;
+        if ($idempotency instanceof Idempotency) {
+            return $idempotency->wasExecuted();
+        }
+
+        $once = $this->middleware['once'] ?? null;
+
+        return $once instanceof Once ? $once->wasExecuted() : null;
     }
 
     /**

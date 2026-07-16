@@ -215,7 +215,7 @@ ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($order);
 ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($order);
 ```
 
-Choose a key that identifies the unit of work (an order id, a webhook id, a request uuid). Keys are scoped per action class, so two different actions can safely share the same key.
+Choose a key that identifies the unit of work (an order id, a webhook id, a request uuid). The key is used verbatim as the cache key — no prefix, no per-class scoping — so the entry lives under exactly the key you passed, and two actions given the same key share the same entry.
 
 By default the entry is remembered forever on the default cache store. Pass a TTL (seconds, a `DateInterval`, or an expiry `DateTimeInterface`) and/or a cache store name to change that:
 
@@ -233,6 +233,17 @@ ChargeCustomer::make()->forgetIdempotency("charge:{$order->id}");
 ```
 
 > On a persistent store (redis, database, file, …) the action's return value is serialized into the cache, so it must be serializable to be replayed. The `array` store keeps values in memory for the current process only.
+
+#### Consuming a key without caching the result: `once()`
+
+`once()` is `idempotent()` for side effects: run at most once per key, but keep nothing except the key. The first successful run stores a bare `true` under the verbatim cache key; later calls are skipped and answer `null` — there is no result to replay:
+
+```php
+SendWelcomeEmail::make()->once("welcome-email:{$user->id}")->handle($user);
+SendWelcomeEmail::make()->once("welcome-email:{$user->id}")->handle($user); // skipped, answers null
+```
+
+Because the key is checked verbatim, *any* existing cache entry under it counts as consumed — including entries written by other code or other systems. Everything else works like `idempotent()`: only successful runs consume the key, the TTL and store arguments behave the same, concurrent callers are serialised through a lock when the store supports one, and `forgetIdempotency()` frees the key. `wasExecuted()` tells a run apart from a skip — useful since a skip answers `null` and a void-ish action would too.
 
 #### Typed results and autocomplete
 
@@ -336,7 +347,7 @@ TransferFunds::make()->transactional(attempts: 2)->handle($from, $to, $amount);
 
 **`transactional(attempts: 1, connection: null)`** runs `handle()` inside `DB::transaction()`, re-running it up to `attempts` times on a deadlock or serialization failure.
 
-`idempotent()` is transaction-aware on its own: when it runs inside an open database transaction (on the default connection), the key is only consumed once that transaction commits — rolled-back work leaves the key free to retry.
+`idempotent()` and `once()` are transaction-aware on their own: when they run inside an open database transaction (on the default connection), the key is only consumed once that transaction commits — rolled-back work leaves the key free to retry.
 
 ### Memoization and deferred execution
 
@@ -378,7 +389,7 @@ ImportUsers::make()->observed()->handle($file);
 Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
 
 ```
-fallback → memoize → idempotent → without overlapping → retry → circuit breaker → throttle → transaction → handle()
+fallback → memoize → idempotent → once → without overlapping → retry → circuit breaker → throttle → transaction → handle()
 ```
 
 Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached or memoized as a real result.

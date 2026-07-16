@@ -145,6 +145,21 @@ describe('middleware decisions', function () {
         expect($second->lastTrace()?->has(TraceEvent::Completed))->toBeTrue();
     });
 
+    it('records consumed and skipped once decisions', function () {
+        $first = ClosureAction::make()->once('trace-once')->trace();
+        $first->handle(fn (): string => 'v');
+
+        expect($first->lastTrace()?->has(TraceEvent::OnceStored))->toBeTrue();
+        expect($first->lastTrace()?->has(TraceEvent::OnceHit))->toBeFalse();
+
+        $second = ClosureAction::make()->once('trace-once')->trace();
+        $second->handle(fn (): string => 'v');
+
+        expect($second->lastTrace()?->has(TraceEvent::OnceHit))->toBeTrue();
+        expect($second->lastTrace()?->has(TraceEvent::OnceStored))->toBeFalse();
+        expect($second->lastTrace()?->has(TraceEvent::Completed))->toBeTrue();
+    });
+
     it('records a consumed fallback on a rescued run', function () {
         $throwing = function (): void {
             throw new RuntimeException('boom');

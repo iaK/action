@@ -5,7 +5,6 @@ namespace Iak\Action\Execution;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
-use Iak\Action\Action;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
@@ -16,6 +15,12 @@ use Illuminate\Support\Facades\DB;
  * run is cached and every later call with the same key returns that cached
  * result instead of executing again. Only successful runs consume the key —
  * if the invocation throws, the exception propagates and the key stays free.
+ *
+ * The key is used verbatim as the cache key — no prefix, no per-class
+ * scoping — so two actions sharing a key share the entry, and the entry can
+ * be inspected or forgotten under exactly the key that was given. Only the
+ * result envelope this middleware writes counts as a hit; a foreign value
+ * under the key reads as a miss and is overwritten by the next run.
  *
  * @internal Configured via PendingAction::idempotent().
  */
@@ -29,26 +34,11 @@ class Idempotency implements Middleware
      */
     protected ?bool $executed = null;
 
-    /**
-     * @param  class-string<Action>  $actionClass
-     */
     public function __construct(
-        protected string $actionClass,
         protected string $key,
         protected DateInterval|DateTimeInterface|int|null $ttl = null,
         protected ?string $store = null,
     ) {}
-
-    /**
-     * Build the class-scoped cache key for an idempotency entry, so two actions
-     * sharing a user key never collide and forgetIdempotency() can target it.
-     *
-     * @param  class-string<Action>  $actionClass
-     */
-    public static function keyFor(string $actionClass, string $key): string
-    {
-        return 'action.idempotent:'.$actionClass.':'.$key;
-    }
 
     /**
      * Whether the underlying action ran on the last invocation. Null before
@@ -62,10 +52,9 @@ class Idempotency implements Middleware
     public function handle(Closure $next): mixed
     {
         $cache = $this->cache();
-        $cacheKey = static::keyFor($this->actionClass, $this->key);
 
         // Fast path: serve a cached result without touching a lock.
-        [$hit, $result] = $this->lookup($cache, $cacheKey);
+        [$hit, $result] = $this->lookup($cache);
 
         if ($hit) {
             $this->executed = false;
@@ -77,10 +66,10 @@ class Idempotency implements Middleware
         $store = $cache->getStore();
 
         if ($store instanceof LockProvider) {
-            return $this->throughLock($cache, $store, $cacheKey, $next);
+            return $this->throughLock($cache, $store, $next);
         }
 
-        return $this->execute($cache, $cacheKey, $next);
+        return $this->execute($cache, $next);
     }
 
     /**
@@ -89,7 +78,7 @@ class Idempotency implements Middleware
      *
      * @param  Closure(): mixed  $next
      */
-    protected function throughLock(Repository $cache, LockProvider $store, string $cacheKey, Closure $next): mixed
+    protected function throughLock(Repository $cache, LockProvider $store, Closure $next): mixed
     {
         $lock = $store->lock($this->lockKey(), 10);
         $acquired = false;
@@ -98,7 +87,7 @@ class Idempotency implements Middleware
             $acquired = $lock->block(10);
 
             // Another caller may have populated the cache while we waited.
-            [$hit, $result] = $this->lookup($cache, $cacheKey);
+            [$hit, $result] = $this->lookup($cache);
 
             if ($hit) {
                 $this->executed = false;
@@ -107,7 +96,7 @@ class Idempotency implements Middleware
                 return $result;
             }
 
-            return $this->execute($cache, $cacheKey, $next);
+            return $this->execute($cache, $next);
         } finally {
             if ($acquired) {
                 $lock->release();
@@ -120,11 +109,11 @@ class Idempotency implements Middleware
      *
      * @param  Closure(): mixed  $next
      */
-    protected function execute(Repository $cache, string $cacheKey, Closure $next): mixed
+    protected function execute(Repository $cache, Closure $next): mixed
     {
         $result = $next();
 
-        $this->persist($cache, $cacheKey, ['result' => $result]);
+        $this->persist($cache, ['result' => $result]);
         $this->executed = true;
         $this->recorder?->record('idempotent', TraceEvent::IdempotencyStored, ['key' => $this->key]);
 
@@ -138,9 +127,9 @@ class Idempotency implements Middleware
      *
      * @return array{bool, mixed}
      */
-    protected function lookup(Repository $cache, string $cacheKey): array
+    protected function lookup(Repository $cache): array
     {
-        $stored = $cache->get($cacheKey);
+        $stored = $cache->get($this->key);
 
         if (is_array($stored) && array_key_exists('result', $stored)) {
             return [true, $stored['result']];
@@ -161,16 +150,16 @@ class Idempotency implements Middleware
      *
      * @param  array{result: mixed}  $envelope
      */
-    protected function persist(Repository $cache, string $cacheKey, array $envelope): void
+    protected function persist(Repository $cache, array $envelope): void
     {
-        $write = function () use ($cache, $cacheKey, $envelope): void {
+        $write = function () use ($cache, $envelope): void {
             if ($this->ttl === null) {
-                $cache->forever($cacheKey, $envelope);
+                $cache->forever($this->key, $envelope);
 
                 return;
             }
 
-            $cache->put($cacheKey, $envelope, $this->ttl);
+            $cache->put($this->key, $envelope, $this->ttl);
         };
 
         $connection = DB::connection();
@@ -185,12 +174,12 @@ class Idempotency implements Middleware
     }
 
     /**
-     * A lock key in its own namespace, so it can never collide with the value
-     * key of another user key that happens to end in the lock suffix.
+     * A lock key in its own namespace, so the ephemeral guard lock can never
+     * collide with the user's verbatim result key.
      */
     protected function lockKey(): string
     {
-        return 'action.idempotent.lock:'.$this->actionClass.':'.$this->key;
+        return 'action.idempotent.lock:'.$this->key;
     }
 
     protected function cache(): Repository
