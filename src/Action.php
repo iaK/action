@@ -208,9 +208,11 @@ abstract class Action
     }
 
     /**
-     * Opt this call into the ActionStarted / ActionCompleted / ActionFailed
-     * lifecycle events without any other wrapper feature. (Any wrapper
-     * feature dispatches them already; plain handle() calls cannot.)
+     * Opt this call into the observability envelope: the ActionStarted /
+     * ActionCompleted / ActionFailed lifecycle events and the log-context
+     * attribution. Nothing opts in implicitly — the wrapper features do
+     * exactly their own job and stay silent — so this is the one switch,
+     * chainable with any feature.
      *
      * @return PendingAction<static>
      */

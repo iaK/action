@@ -95,7 +95,7 @@ describe('trace()', function () {
             $completed[] = $event;
         });
 
-        ClosureAction::make()->trace()->handle(fn (): string => 'x');
+        ClosureAction::make()->trace()->observed()->handle(fn (): string => 'x');
         ClosureAction::make()->observed()->handle(fn (): string => 'x');
 
         expect($completed)->toHaveCount(2);

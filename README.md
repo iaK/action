@@ -5,7 +5,51 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/iaK/action/fix-php-code-style-issues.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/iaK/action/actions?query=workflow%3A"Fix+PHP+code+style+issues"+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/iak/action.svg?style=flat-square)](https://packagist.org/packages/iak/action)
 
-A simple way to organize your business logic in Laravel applications.
+A dont-get-in-my-way action pattern wrapper for laravel applications.
+
+For a guide on how I use actions, which is also the way this package is tailored towards, see this blogpost: https://berglind.dev/blog/all-about-the-action/
+
+## Why do i need this package?
+
+The action pattern is awesome because it's dead simple. What this package aims to do, is to provide some helpers and save you from writing the boring boilerplate code, and focus on your business logic.
+
+Stuff like idempotency, concurrency control, database transactions, circuit breaking, retires and debugging is ready to use without it cluttering your code, easy for both humans and agents to reach for.
+
+Lets say you have a piece of code like this:
+
+```php
+class ChargeOrderAction
+{
+    public function handle(Order $order): Payment
+    {
+        $payment = app(PaymentGateway::class)->charge($order->customer, $order->total);
+
+        $order->update(['status' => OrderStatus::Paid]);
+        $order->payments()->create([
+            'amount' => $order->total,
+            'reference' => $payment->reference,
+        ]);
+
+        return $payment;
+    }
+}
+```
+
+In reality, you probably won't get away with a solution as simple as this. You will probably need transactions, maybe idempotency, and want to retry it on deadlocks or failures.
+
+Instead of cluttering our beatiful and simple action with that logic, we can instead chain it on when we call it.
+
+```php
+$payment = ChargeOrderAction::make()
+    ->idempotent("order:{$order->id}:charge", ttl: now()->addDay())
+    ->retry(times: 3, backoff: [100, 1000])
+    ->transactional(attempts: 2)
+    ->handle($order);
+```
+
+This is just as big a win for agents as it is for you. Instead of generating fifty lines of locking, caching and retry boilerplate — which you then get to review for subtle bugs — an agent chains a few calls that are hard to get wrong and, thanks to the fixed nesting order, impossible to compose incorrectly. The call site ends up documenting its own guarantees, so human and agent alike can tell at a glance what a call does in production. And when something misbehaves, the [debug helpers](#debugging) print straight to stdout — exactly where an agent is already looking.
+
+This wrapper also has the support for eventing and inline actions. More on that below.
 
 ## Installation
 
@@ -13,9 +57,11 @@ A simple way to organize your business logic in Laravel applications.
 composer require iak/action
 ```
 
-## Production API
+## The basics
 
-### Creating an Action
+### Creating an action
+
+An action is a plain class that extends `Action` and implements a `handle()` method. That's the whole contract — no interfaces, no registration:
 
 ```php
 <?php
@@ -24,55 +70,204 @@ namespace App\Actions;
 
 use Iak\Action\Action;
 
-class SayHelloAction extends Action
+class ChargeOrderAction extends Action
 {
-    public function handle()
+    public function handle(Order $order): Payment
     {
-        return "Hello";
+        // Your business logic.
     }
 }
 ```
 
-### Using an Action
+### Running an action
+
+Actions resolve through the container, so constructor injection works like anywhere else in Laravel — inject it, or create one yourself with `make()`:
 
 ```php
 <?php
 
-namespace App\Http\Controllers;
+// Dependency inject or resolve it directly
+$payment = app(ChargeOrderAction::class)->handle($order);
 
-use App\Actions\SayHelloAction;
+// Or create it using the make() method
+$payment = ChargeOrderAction::make()->handle($order);
+```
 
-class HomeController extends Controller
-{
-    public function index(SayHelloAction $action)
-    {
-        $result = $action->handle();
+A bare `handle()` call is exactly that — a method call. And chaining a wrapper adds exactly that wrapper's behaviour, nothing else. Observability — the lifecycle events and log context — is its own explicit opt-in via [`observed()`](#lifecycle-events), so adding a retry or an idempotency key never changes what your logs or listeners see.
 
-        // Or create it using the make() method
+### Conditional wrappers
 
-        $result = SayHelloAction::make()->handle();
+Every builder in the package — `make()`, the execution wrappers and `test()` — is conditionable with Laravel's `when()`/`unless()`. That means the if statements around your actions can go away. Instead of this:
 
-        return response()->json($result);
-    }
+```php
+if ($user->isActivated()) {
+    SendWelcomeGift::make()->handle($user);
 }
 ```
 
-Every builder in the package — `make()`, the execution wrappers and `test()` —
-is conditionable with Laravel's `when()`/`unless()`:
+The condition moves into the chain:
 
 ```php
-SendInvoice::make()
-    ->when(app()->isProduction(), fn (SendInvoice $action) => $action->throttle(allow: 30))
-    ->handle($order);
+SendWelcomeGift::make()
+    ->when(fn () => $user->isActivated(), fn (SendWelcomeGift $action) => $action->handle($user));
 ```
 
-Note that when the condition is false, the call above is a bare `handle()` —
-no wrapper is configured, so it gets no lifecycle events and no log context.
-Chain `observed()` unconditionally if you want those either way.
+The same trick works for conditioning a single wrapper instead of the whole call — rate-limit the free plan, let paying customers run straight through:
 
-### Events
+```php
+ExportReport::make()
+    ->when(fn () => $user->onFreePlan(), fn (ExportReport $action) => $action->throttle("export:{$user->id}", allow: 3, every: 3600))
+    ->handle($user);
+```
 
-Actions can emit and listen to events:
+The condition can be a plain value or a closure, and `unless()` is the inverse. When the condition is false, the last call above is a plain bare `handle()` — which is fine, since a wrapper only ever adds its own behaviour. Observability is a separate opt-in via [`observed()`](#lifecycle-events) either way, and it chains fine after a `when()`.
+
+## Inline actions
+
+Sometimes a flow is too small for a class of its own but still deserves the pipeline. `Inline` runs a closure through the same wrappers — no action class required:
+
+```php
+use Iak\Action\Inline;
+
+// bare: runs the closure, nothing else
+Inline::handle(fn () => $user->sync());
+
+// with wrappers, chained exactly like a class-based action
+Inline::idempotent('sync:'.$user->id)
+    ->retry(3, backoff: 100)
+    ->trace()
+    ->handle(fn () => $user->sync());
+```
+
+The closure receives the underlying action as its argument, which is how you emit events; declare them at the entry with `events()` — the fluent twin of `#[EmitsEvents]` — and listen with `on()`:
+
+```php
+Inline::events(['report.sent'])
+    ->on('report.sent', fn ($report) => Mail::send(...))
+    ->handle(function ($action) {
+        $report = // ... build the report ...
+        $action->event('report.sent', $report);
+
+        return $report;
+    });
+```
+
+Everything on the wrapper works: `retry()`, `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `circuitBreaker()`, `throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the `run()` escape hatch.
+
+Two things to know:
+
+- **Inline actions share one class** (`InlineAction`), so idempotency keys share one namespace, log context attributes every inline run as `Iak\Action\InlineAction`, and the wrappers that default their key to the action class — `circuitBreaker()`, `throttle()`, `withoutOverlapping()`, `memoize()` — require an explicit key (you get a clear exception otherwise, never a silently shared circuit breaker).
+- **Bare `Inline::handle()` is as silent as any unobserved run** — no lifecycle events, no log context. Start the chain from `Inline::observed()` when you want them, exactly like `observed()` on a class action.
+
+Inline actions don't get constructor injection, `#[EmitsEvents]` ancestor propagation or `Action::test()` mocking and instrumentation. The moment you want those, promote the closure to a real action class — its body moves into `handle()` unchanged.
+
+## Debugging
+
+Every wrapper makes silent decisions — a retry sleeps, a circuit opens, an idempotency key answers from cache. And `handle()` itself does things you can't see from the call site: queries, log writes, memory spikes. The debug helpers make all of it visible right where you are, without touching the action.
+
+They are built for humans and agents alike. Everything below prints straight to stdout — exactly where a coding agent is already looking — so an agent can debug and optimize your actions with the same loop you would use: chain a helper, run the action, read the output, fix the thing. More on that [below](#agents-can-debug-your-actions-too).
+
+### Tracing an execution
+
+Chain `->dumpTrace()` on any call to print a timeline of every decision the wrappers made:
+
+```php
+SyncInventory::make()
+    ->retry(3, backoff: 400, jitter: true)
+    ->idempotent("sku:{$sku->id}")
+    ->dumpTrace()
+    ->handle($sku);
+
+// +0.0ms  started
+// +0.2ms  retry: attempt 1 failed (RuntimeException)
+// +0.3ms  retry: sleeping 231ms
+// +231.8ms  idempotency: result stored for 'sku-42'
+// +232.1ms  completed (232.1ms)
+```
+
+`->ddTrace()` does the same but stops the process right after the run, like `dd()`.
+
+When you want the trace programmatically instead of printed, chain `->trace()` and read it back with `lastTrace()`:
+
+```php
+$pending = SyncInventory::make()->retry(3, backoff: 400, jitter: true)->idempotent($sku)->trace();
+
+$pending->handle($sku);
+
+echo $pending->lastTrace()->summary();
+```
+
+`trace()` also accepts a callback that receives the `Trace` after the run — including when it throws, which is exactly when you want it:
+
+```php
+SyncInventory::make()
+    ->retry(3)
+    ->trace(fn (Trace $trace) => Log::debug($trace->summary()))
+    ->handle($sku);
+```
+
+A `Trace` holds ordered `TraceEntry` records — the wrapper slot, a `TraceEvent` case, the millisecond offset and the decision's context — with `entries()`, `has()`, `count()`, `first()`, `durationMs()` and `summary()`. On a run that is also `observed()`, the lifecycle events carry the trace too, as `ActionCompleted::$trace` / `ActionFailed::$trace` (null when tracing is off). Tracing costs nothing unless enabled.
+
+### Dumping queries, logs, events and profiles
+
+The [test instruments](#testing) all have dump twins that print what was recorded, without wiring an inspection callback — recording is enabled automatically:
+
+```php
+GenerateReport::test()->dumpQueries()->handle($team);
+
+// [queries] 27 recorded (48.3ms total)
+// 1. select * from teams where id = ? [0.8ms, mysql]
+// 2. select * from members where team_id = ? [1.7ms, mysql]
+// 3. select * from tasks where member_id = ? [1.6ms, mysql]
+// 4. select * from tasks where member_id = ? [1.7ms, mysql]
+// 5. select * from tasks where member_id = ? [1.6ms, mysql]
+// ...
+```
+
+That's an N+1 staring back at you. Eager-load it, then lock the win in with an assertion so it never creeps back:
+
+```php
+it('generates the report without an N+1', function () {
+    GenerateReport::test()
+        ->assertNoDuplicateQueries()
+        ->handle($team);
+});
+```
+
+Each instrument has a pair: `dumpQueries()`/`ddQueries()`, `dumpLogs()`/`ddLogs()`, `dumpEvents()`/`ddEvents()` and `dumpProfile()`/`ddProfile()`. The `dd*` variants stop the process after printing, like `DB::ddRawSql()`. Like the inspection callbacks, the dumps do not run when an `idempotent()` cache hit means nothing executed.
+
+When combining dump helpers with the query assertions, chain the dumps first: the deferred checks run in chaining order, and a failing assertion stops any dump queued after it from printing.
+
+And when you need to see what a destructive action *would* do, [`dryRun()`](#dry-runs) executes it and rolls the database work back afterwards — the instruments still record and report.
+
+### Log context
+
+Every `observed()` run (and every `test()` run) sets the running action's class under the `action` key in Laravel's [Context](https://laravel.com/docs/context), so log lines written while the action runs — including code it calls — carry which action produced them:
+
+```php
+SendInvoice::make()->observed()->handle($order);
+// [2026-07-07 12:00:00] production.INFO: invoice created {"action":"App\\Actions\\SendInvoice"}
+```
+
+Nested actions attribute to the innermost running action, the previous value is restored afterwards (also when the run throws), and a pre-existing `action` context value survives. Wrapper chains without `observed()` — and bare `$action->handle()` calls — leave the context untouched: `observed()` is the one switch for attribution, so your log shape never changes as a side effect of adding a retry or a lock.
+
+### Agents can debug your actions too
+
+An agent debugging your code has the same problem you do: it can't see inside a run. These helpers fix that for both of you — they print to stdout, the assertions fail with the offending SQL in the message, and nothing needs a debugger or an IDE. That makes actions unusually easy for an agent to debug *and* optimize on its own:
+
+- *"Why is `GenerateReport` slow?"* — the agent chains `->dumpQueries()` and `->dumpProfile()`, reads the output, spots the N+1, fixes it and guards it with `->assertNoDuplicateQueries()`.
+- *"Is the retry actually helping?"* — `->dumpTrace()` shows every attempt, sleep and decision on one timeline.
+- *"What would this backfill do?"* — `test()->dryRun()` executes it and rolls the database work back, so it can be rehearsed safely.
+
+> **Tip:** mention these helpers in your `CLAUDE.md` / `AGENTS.md`, and your agent will reach for them on its own instead of sprinkling `dump()` calls through your business logic.
+
+## Eventing
+
+Actions can emit events, and anything that calls them can listen. The action announces what happened; whoever cares reacts. Your business logic stays clean and decoupled from the reactions.
+
+### Emitting events
+
+Declare the events an action may emit with the `#[EmitsEvents]` attribute, and emit them with `$this->event()`:
 
 ```php
 <?php
@@ -88,7 +283,7 @@ class SayHelloAction extends Action
     public function handle()
     {
         $result = "Hello";
-        
+
         $this->event('hello_said', $result);
 
         return $result;
@@ -96,18 +291,51 @@ class SayHelloAction extends Action
 }
 ```
 
-Listen to events:
+The declaration up front is deliberate: it documents what the action can emit, and it catches mistakes early — emitting or listening for an event that isn't declared throws an `InvalidArgumentException` right away, instead of leaving you with a silently dead listener.
+
+### Listening to events
+
+Listen with `on()` before you call `handle()`:
 
 ```php
-$action = SayHelloAction::make()
+$result = SayHelloAction::make()
     ->on('hello_said', function ($result) {
-        // Do something when hello is said
         Log::info("Hello said: {$result}");
     })
     ->handle();
 ```
 
-#### Forwarding Events
+### Enum-backed events
+
+Declare the allowed events with an enum instead of strings — every case becomes an event, and cases work anywhere an event name goes:
+
+```php
+enum OrderEvent: string
+{
+    case Placed = 'order.placed';
+    case Shipped = 'order.shipped';
+}
+
+#[EmitsEvents(OrderEvent::class)]
+class PlaceOrderAction extends Action
+{
+    public function handle($order)
+    {
+        // ...
+        $this->event(OrderEvent::Placed, $order);
+
+        return $order;
+    }
+}
+
+PlaceOrderAction::make()
+    ->on(OrderEvent::Placed, fn ($order) => Log::info('placed', ['id' => $order->id]))
+    ->handle($order);
+```
+
+String-backed enums use their value as the event name and pure enums use the case name, so an enum case and its string are interchangeable — existing string listeners keep working. You can also mix cases into the array form: `#[EmitsEvents([OrderEvent::Placed, 'legacy-event'])]`. Int-backed enums are rejected.
+
+### Forwarding events
 
 When you have nested actions, you can use `forwardEvents()` to propagate events from child actions to parent classes that use the `HandlesEvents` trait, even if there are intermediate classes between them. This is particularly useful when services call actions and want to listen to events from those actions.
 
@@ -152,17 +380,7 @@ class EmailService
 - The parent class (service, action, etc.) must also declare the event in its `#[EmitsEvents(...)]` attribute to receive forwarded events
 - Events can propagate through multiple layers of intermediate classes, as long as the ancestor class uses the `HandlesEvents` trait
 
-**Forwarding specific events:**
-
-```php
-SendEmailAction::make()
-    ->forwardEvents(['email_sent', 'email_failed'])
-    ->handle($user);
-```
-
-**Forwarding all allowed events:**
-
-If you call `forwardEvents()` without arguments, all events declared in the action's `#[EmitsEvents(...)]` attribute will be forwarded:
+If you call `forwardEvents()` without arguments, all events declared in the action's `#[EmitsEvents(...)]` attribute are forwarded:
 
 ```php
 SendEmailAction::make()
@@ -170,40 +388,11 @@ SendEmailAction::make()
     ->handle($user);
 ```
 
-#### Enum-backed events
+> Want to assert on the events an action emitted in a test? That's the `events()` instrument — see [Testing events](#testing-events).
 
-Declare the allowed events with an enum instead of strings — every case
-becomes an event, and cases work anywhere an event name goes:
+## API reference
 
-```php
-enum OrderEvent: string
-{
-    case Placed = 'order.placed';
-    case Shipped = 'order.shipped';
-}
-
-#[EmitsEvents(OrderEvent::class)]
-class PlaceOrderAction extends Action
-{
-    public function handle($order)
-    {
-        // ...
-        $this->event(OrderEvent::Placed, $order);
-
-        return $order;
-    }
-}
-
-PlaceOrderAction::make()
-    ->on(OrderEvent::Placed, fn ($order) => Log::info('placed', ['id' => $order->id]))
-    ->handle($order);
-```
-
-String-backed enums use their value as the event name and pure enums use the
-case name, so an enum case and its string are interchangeable — existing
-string listeners keep working. You can also mix cases into the array form:
-`#[EmitsEvents([OrderEvent::Placed, 'legacy-event'])]`. Int-backed enums are
-rejected.
+The rest of the docs walk through the full API with examples. All wrappers chain off `make()` (or `Inline::`), compose freely with each other and with `when()`/`unless()`, and always nest in the same [fixed order](#the-nesting-order-is-fixed) no matter how you chain them.
 
 ### Idempotent execution
 
@@ -266,7 +455,7 @@ Both entry points share the same key and cache entry — pick whichever reads be
 
 #### With the test instruments
 
-Idempotency chains with the [test instruments](#testing--debugging) in any order and shares keys with the production wrapper:
+Idempotency chains with the [test instruments](#testing) in any order and shares keys with the production wrapper:
 
 ```php
 $testable = ChargeCustomer::test()
@@ -280,8 +469,7 @@ $testable->wasExecuted(); // true on the run that executed, false when served fr
 
 On a cache hit nothing executes, so nothing is instrumented and no inspection callbacks fire — `wasExecuted()` tells the runs apart.
 
-After the run, `assertExecuted()` / `assertSkipped()` turn `wasExecuted()`
-into proper test failures with named reasons:
+After the run, `assertExecuted()` / `assertSkipped()` turn `wasExecuted()` into proper test failures with named reasons:
 
 ```php
 $testable = SendInvoice::test()->idempotent('order-7');
@@ -315,10 +503,7 @@ ChargeCustomer::make()
 
 **`retry(times: 3, backoff: 0, when: null)`** re-runs `handle()` when it throws, up to `times` total attempts. `backoff` is the pause between attempts in milliseconds: a fixed value, a per-attempt schedule (`[100, 500]` — the last entry repeats), or a closure receiving the attempt number and the exception. Sleeping goes through Laravel's `Sleep`, so tests control it with `Sleep::fake()`. By default every exception is retried except those implementing the `Iak\Action\Exceptions\NonRetryable` marker interface — implement it on your own exceptions to fail fast, or pass a `when:` closure to decide entirely yourself.
 
-When many processes retry against the same recovering dependency, fixed
-backoffs arrive in synchronized waves that knock it over again. `jitter: true`
-spreads them out by sleeping a random duration between zero and the scheduled
-backoff instead of the exact value:
+When many processes retry against the same recovering dependency, fixed backoffs arrive in synchronized waves that knock it over again. `jitter: true` spreads them out by sleeping a random duration between zero and the scheduled backoff instead of the exact value:
 
 ```php
 $action->retry(times: 4, backoff: [100, 400, 800], jitter: true)->handle($order);
@@ -370,7 +555,13 @@ SendAnalytics::make()
 
 ### Lifecycle events
 
-Every invocation that goes through the wrapper dispatches plain Laravel events: `ActionStarted`, then `ActionCompleted` (with the result, the duration in milliseconds and the memory delta) or `ActionFailed` (with the exception, which is rethrown). One listener turns every wrapped action into an APM data point:
+Observability is opt-in, and `observed()` is the switch. An observed run dispatches plain Laravel events around the whole invocation: `ActionStarted`, then `ActionCompleted` (with the result, the duration in milliseconds and the memory delta) or `ActionFailed` (with the exception, which is rethrown) — and attributes the run in [log context](#log-context):
+
+```php
+ImportUsers::make()->observed()->handle($file);
+```
+
+One listener turns every observed action into an APM data point:
 
 ```php
 Event::listen(function (ActionCompleted $event) {
@@ -378,13 +569,9 @@ Event::listen(function (ActionCompleted $event) {
 });
 ```
 
-A plain `$action->handle()` call cannot emit them — the base `Action` does not wrap your `handle()` — so `->observed()` exists to opt a call in without any other feature:
+The wrappers never dispatch these on their own — `retry()`, `idempotent()` and friends do exactly their job and stay silent, so adding one to a call changes nothing about what your listeners or logs see. Chain `observed()` next to any combination of wrappers to opt the call in. (A plain `$action->handle()` cannot emit them at all — the base `Action` does not wrap your `handle()`.)
 
-```php
-ImportUsers::make()->observed()->handle($file);
-```
-
-#### The nesting order is fixed
+### The nesting order is fixed
 
 Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
 
@@ -394,126 +581,7 @@ fallback → memoize → idempotent → once → without overlapping → retry �
 
 Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached or memoized as a real result.
 
-#### Log context
-
-Every wrapper-mediated run (and every `test()` run) sets the running action's
-class under the `action` key in Laravel's
-[Context](https://laravel.com/docs/context), so log lines written while the
-action runs — including code it calls — carry which action produced them:
-
-```php
-SendInvoice::make()->observed()->handle($order);
-// [2026-07-07 12:00:00] production.INFO: invoice created {"action":"App\\Actions\\SendInvoice"}
-```
-
-Nested actions attribute to the innermost running action, the previous value
-is restored afterwards (also when the run throws), and a pre-existing `action`
-context value survives. A bare `$action->handle()` call never passes through
-package code and gets no context — chain any wrapper (or `observed()`) to opt
-a call in.
-
-### Tracing an execution
-
-Every wrapper makes silent decisions — a retry sleeps, a circuit opens, an
-idempotency key is served from cache. Chain `->trace()` to record them and
-read the timeline back:
-
-```php
-$pending = SyncInventory::make()->retry(3, backoff: 400, jitter: true)->idempotent($sku)->trace();
-
-$pending->handle($sku);
-
-echo $pending->lastTrace()->summary();
-// +0.0ms  started
-// +0.2ms  retry: attempt 1 failed (RuntimeException)
-// +0.3ms  retry: sleeping 231ms
-// +231.8ms  idempotency: result stored for 'sku-42'
-// +232.1ms  completed (232.1ms)
-```
-
-`trace()` also accepts a callback that receives the `Trace` after the run —
-including when it throws, which is exactly when you want it:
-
-```php
-SyncInventory::make()
-    ->retry(3)
-    ->trace(fn (Trace $trace) => Log::debug($trace->summary()))
-    ->handle($sku);
-```
-
-A `Trace` holds ordered `TraceEntry` records — the wrapper slot, a
-`TraceEvent` case, the millisecond offset and the decision's context — with
-`entries()`, `has()`, `count()`, `first()`, `durationMs()` and `summary()`.
-When tracing is enabled the lifecycle events carry the trace too, as
-`ActionCompleted::$trace` / `ActionFailed::$trace` (null otherwise). Tracing
-costs nothing unless enabled.
-
-While developing, print the timeline directly with `->dumpTrace()`, or
-`->ddTrace()` to stop right after the run:
-
-```php
-SyncInventory::make()->retry(3)->dumpTrace()->handle($sku);
-```
-
-### Inline actions
-
-Sometimes a flow is too small for a class of its own but still deserves the
-pipeline. `Inline` runs a closure through the same wrappers — no action class
-required:
-
-```php
-use Iak\Action\Inline;
-
-// bare: attributed in log context, lifecycle events dispatched
-Inline::handle(fn () => $user->sync());
-
-// with wrappers, chained exactly like a class-based action
-Inline::idempotent('sync:'.$user->id)
-    ->retry(3, backoff: 100)
-    ->trace()
-    ->handle(fn () => $user->sync());
-```
-
-The closure receives the underlying action as its argument, which is how you
-emit events; declare them at the entry with `events()` — the fluent twin of
-`#[EmitsEvents]` — and listen with `on()`:
-
-```php
-Inline::events(['report.sent'])
-    ->on('report.sent', fn ($report) => Mail::send(...))
-    ->handle(function ($action) {
-        $report = // ... build the report ...
-        $action->event('report.sent', $report);
-
-        return $report;
-    });
-```
-
-Everything on `PendingAction` works: `retry()`, `fallback()`, `idempotent()`
-(bust with `Inline::forgetIdempotency($key)`), `circuitBreaker()`,
-`throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`,
-`trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`,
-`defer()` and the `run()` escape hatch.
-
-Two things to know:
-
-- **Inline actions share one class** (`InlineAction`), so idempotency keys
-  share one namespace, log context attributes every inline run as
-  `Iak\Action\InlineAction`, and the wrappers that default their key to the
-  action class — `circuitBreaker()`, `throttle()`, `withoutOverlapping()`,
-  `memoize()` — require an explicit key (you get a clear exception
-  otherwise, never a silently shared circuit breaker).
-- **Bare `Inline::handle()` is already wrapper-mediated**, so unlike a bare
-  `$action->handle()` on a class action it dispatches the
-  `ActionStarted`/`ActionCompleted`/`ActionFailed` lifecycle events — as if
-  `observed()` were always chained.
-
-Inline actions don't get constructor injection, `#[EmitsEvents]` ancestor
-propagation or `Action::test()` mocking and instrumentation. The moment you
-want those, promote the closure to a real action class — its body moves into
-`handle()` unchanged.
-
-## Testing & debugging
+## Testing
 
 Actions provide helpful static methods for testing and debugging:
 
@@ -538,7 +606,7 @@ $action = SayHelloAction::test();
 > previous state after running, so they are the supported way to profile or
 > inspect an action in production.
 
-### Basic Testing
+### Basic testing
 
 ```php
 <?php
@@ -547,32 +615,29 @@ use App\Actions\SayHelloAction;
 
 it('says hello', function () {
     $result = SayHelloAction::make()->handle();
-    
+
     expect($result)->toBe('Hello');
 });
 
 it('can fake an action', function () {
     $action = SayHelloAction::fake();
-    
+
     expect($action)->toBeInstanceOf(MockInterface::class);
 });
 ```
 
-`Testable` mirrors your action's own `handle()` signature through a generic
-`@mixin`, so PHPStan checks the arguments and infers the return type. Editors
-that don't resolve generic mixins yet can get the same typing through a
-closure:
+`Testable` mirrors your action's own `handle()` signature through a generic `@mixin`, so PHPStan checks the arguments and infers the return type. Editors that don't resolve generic mixins yet can get the same typing through a closure:
 
 ```php
 $result = SayHelloAction::test()
     ->run(fn (SayHelloAction $action) => $action->handle());
 ```
 
-### Mocking Actions in Tests
+### Mocking actions in tests
 
 When testing actions that call other actions, you can control which actions execute their real logic and which are mocked.
 
-#### The `only()` Method
+#### The `only()` method
 
 The `only()` method specifies which actions should **execute normally**. All other actions will be automatically mocked.
 
@@ -603,7 +668,7 @@ it('allows only one action to execute', function () {
 });
 ```
 
-#### The `without()` Method
+#### The `without()` method
 
 The `without()` method mocks specific actions, preventing them from executing their real `handle()` method. All other actions execute normally.
 
@@ -642,11 +707,11 @@ it('mocks actions with custom return values', function () {
 });
 ```
 
-#### The `except()` Method
+#### The `except()` method
 
 The `except()` method is an alias for `without()`, providing an alternative syntax that may be more readable in certain contexts.
 
-### Testing Database Queries
+### Testing database queries
 
 The `queries()` method allows you to record and inspect database queries executed during action execution. This can be really helpful when debugging performance issues, n+1 queries and more.
 
@@ -681,9 +746,7 @@ it('tracks queries from nested actions', function () {
 
 #### Asserting query counts and N+1s
 
-Chain the query assertions before `handle()` — recording is enabled
-automatically and the checks run once the action completes, failing the test
-with the offending SQL:
+Chain the query assertions before `handle()` — recording is enabled automatically and the checks run once the action completes, failing the test with the offending SQL:
 
 ```php
 it('does not produce duplicate queries', function () {
@@ -694,36 +757,11 @@ it('does not produce duplicate queries', function () {
 });
 ```
 
-Duplicates are grouped by normalized SQL, so an N+1 loop and `whereIn`
-queries with different placeholder counts are caught.
+Duplicates are grouped by normalized SQL, so an N+1 loop and `whereIn` queries with different placeholder counts are caught.
 
-### Dumping instrument output
+### Testing events
 
-Chain a dump helper before `handle()` to print what an instrument recorded,
-without wiring an inspection callback — recording is enabled automatically:
-
-```php
-SendInvoice::test()->dumpQueries()->handle($order);
-// [queries] 3 recorded (2.1ms total)
-// 1. select * from orders where id = ? [1.2ms, mysql]
-// 2. select * from lines where order_id in (?, ?) [0.6ms, mysql]
-// 3. update orders set status = ? [0.3ms, mysql]
-```
-
-Each instrument has a pair: `dumpQueries()`/`ddQueries()`,
-`dumpLogs()`/`ddLogs()`, `dumpEvents()`/`ddEvents()` and
-`dumpProfile()`/`ddProfile()`. The `dd*` variants stop the process after
-printing, like `DB::ddRawSql()`. Like the inspection callbacks, the dumps do
-not run when an `idempotent()` cache hit means nothing executed.
-
-When combining dump helpers with the query assertions, chain the dumps first:
-the deferred checks run in chaining order, and a failing assertion stops any
-dump queued after it from printing.
-
-### Testing Events
-
-Record the events an action emits with the `events()` instrument — the same
-shapes as `queries()`/`logs()`:
+Record the events an action emits with the `events()` instrument — the same shapes as `queries()`/`logs()`:
 
 ```php
 it('emits the placed event', function () {
@@ -746,7 +784,7 @@ it('emits from nested actions', function () {
 });
 ```
 
-### Testing Logs
+### Testing logs
 
 The `logs()` method allows you to capture and verify log entries written during action execution:
 
@@ -781,7 +819,7 @@ it('tracks logs from nested actions', function () {
 });
 ```
 
-### Profiling Actions
+### Profiling actions
 
 The `profile()` method allows you to measure execution time, memory usage, and track memory records:
 
@@ -850,7 +888,7 @@ Pass connection names to wrap more than the default connection: `dryRun('tenant'
 
 > Only database work is contained. Mail, HTTP calls and cache writes made by the action escape a dry run — it is a diagnostic tool, not a sandbox.
 
-### Combining Features
+### Combining features
 
 You can combine multiple testing features in a single test:
 

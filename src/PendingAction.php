@@ -82,6 +82,12 @@ class PendingAction
      */
     protected array $middleware = [];
 
+    /**
+     * Whether observed() opted this run into the observability envelope —
+     * the lifecycle events and the log-context attribution.
+     */
+    protected bool $observed = false;
+
     protected bool $tracing = false;
 
     /** @var (Closure(Trace): void)|null */
@@ -190,15 +196,18 @@ class PendingAction
     }
 
     /**
-     * Opt a plain call into the lifecycle events without any other wrapper
-     * feature. Every wrapper-mediated invocation already dispatches
-     * ActionStarted / ActionCompleted / ActionFailed; this exists for calls
-     * that want only the events.
+     * Opt this run into the observability envelope: the ActionStarted /
+     * ActionCompleted / ActionFailed lifecycle events and the log-context
+     * attribution. Nothing dispatches them implicitly — the wrapper
+     * features do exactly their own job — so adding a retry() or an
+     * idempotency key never changes what your logs or listeners see.
      *
      * @return $this
      */
     public function observed(): static
     {
+        $this->observed = true;
+
         return $this;
     }
 
@@ -215,6 +224,22 @@ class PendingAction
     public function on(string|UnitEnum $event, callable $callback): static
     {
         $this->action->on($event, $callback);
+
+        return $this;
+    }
+
+    /**
+     * Enable event forwarding on the wrapped action — and keep the chain,
+     * for the same reason on() does. The ancestors are captured here, so
+     * call forwardEvents() from within the scope that should receive the
+     * events. See HandlesEvents::forwardEvents().
+     *
+     * @param  array<int, string|UnitEnum>|null  $events  The events to forward; null forwards every event the action declares as allowed.
+     * @return $this
+     */
+    public function forwardEvents(?array $events = null): static
+    {
+        $this->action->forwardEvents($events);
 
         return $this;
     }
@@ -423,22 +448,27 @@ class PendingAction
     }
 
     /**
-     * Send the invocation through the configured middleware, attributed in
-     * Laravel's log Context for the duration of the run.
+     * Send the invocation through the configured middleware. An observed()
+     * run is additionally attributed in Laravel's log Context for its
+     * duration; an unobserved run leaves the context untouched.
      *
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
      */
     protected function through(Closure $invoke, ?array $args): mixed
     {
+        if (! $this->observed) {
+            return $this->throughChain($invoke, $args);
+        }
+
         return ActionContext::within($this->action, fn (): mixed => $this->throughChain($invoke, $args));
     }
 
     /**
      * Send the invocation through the configured middleware, nested in the
      * fixed ORDER (outermost first) regardless of chaining order, with the
-     * lifecycle events dispatched around the whole chain and the trace
-     * recorded when tracing is enabled.
+     * lifecycle events dispatched around the whole chain when the run is
+     * observed() and the trace recorded when tracing is enabled.
      *
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
@@ -476,7 +506,10 @@ class PendingAction
         $memoryBefore = memory_get_usage(true);
 
         $recorder?->record('action', TraceEvent::Started);
-        Event::dispatch(new ActionStarted($this->action));
+
+        if ($this->observed) {
+            Event::dispatch(new ActionStarted($this->action));
+        }
 
         try {
             $result = $invoke();
@@ -488,9 +521,11 @@ class PendingAction
             ]);
             $trace = $this->finishTrace($recorder);
 
-            Event::dispatch(new ActionFailed(
-                $this->action, $e, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
-            ));
+            if ($this->observed) {
+                Event::dispatch(new ActionFailed(
+                    $this->action, $e, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
+                ));
+            }
 
             $this->reportTrace($trace);
 
@@ -501,9 +536,11 @@ class PendingAction
         $recorder?->record('action', TraceEvent::Completed, ['duration_ms' => $durationMs]);
         $trace = $this->finishTrace($recorder);
 
-        Event::dispatch(new ActionCompleted(
-            $this->action, $result, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
-        ));
+        if ($this->observed) {
+            Event::dispatch(new ActionCompleted(
+                $this->action, $result, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
+            ));
+        }
 
         $this->reportTrace($trace);
 

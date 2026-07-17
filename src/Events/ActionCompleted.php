@@ -6,7 +6,7 @@ use Iak\Action\Action;
 use Iak\Action\Execution\Trace;
 
 /**
- * Dispatched when a wrapper-mediated invocation finishes without throwing.
+ * Dispatched when an observed() invocation finishes without throwing.
  * $result is what the caller receives — a cached idempotent result or a
  * fallback value count as completions of the invocation as a whole.
  * $memoryBytes is the memory_get_usage() delta across the invocation and can

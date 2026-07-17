@@ -30,10 +30,9 @@ final class Inline
     private function __construct() {}
 
     /**
-     * Run the closure immediately. The run is wrapper-mediated even without
-     * wrappers, so — unlike a bare $action->handle() on a class action — it
-     * is attributed in log context and dispatches the ActionStarted /
-     * ActionCompleted / ActionFailed lifecycle events, like observed().
+     * Run the closure immediately, without any wrapper feature. Like every
+     * unobserved run it stays silent — no lifecycle events, no log context;
+     * start from Inline::observed() to opt a run in.
      *
      * @template TReturn
      *
@@ -193,8 +192,8 @@ final class Inline
     }
 
     /**
-     * Opt the run into the lifecycle events explicitly. Bare Inline::handle()
-     * already dispatches them; this exists for symmetry with class actions.
+     * Opt the run into the observability envelope — lifecycle events and
+     * log-context attribution — exactly like observed() on a class action.
      *
      * @return PendingAction<InlineAction>
      */
