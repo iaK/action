@@ -2,6 +2,10 @@
 
 All notable changes to `laravel-action` will be documented in this file.
 
+## 2.0.0 - 2026-07-18
+
+Idempotency, retries, circuit breakers and more.
+
 ## Unreleased
 
 **New features**
