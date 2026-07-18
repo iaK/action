@@ -1,0 +1,15 @@
+<?php
+
+namespace {{ namespace }};
+
+use Iak\Action\Action;
+use Iak\Action\EmitsEvents;
+
+#[EmitsEvents({{ event }}::class)]
+class {{ class }} extends Action
+{
+    public function handle()
+    {
+        //
+    }
+}

@@ -79,6 +79,19 @@ class ChargeOrderAction extends Action
 }
 ```
 
+### Generating actions
+
+The package ships a generator:
+
+```bash
+php artisan make:action ShipOrder                   # app/Actions/ShipOrder.php
+php artisan make:action Orders/ShipOrder            # app/Actions/Orders/ShipOrder.php (App\Actions\Orders)
+php artisan make:action ShipOrder --dir=app/Domain  # the namespace follows the directory
+php artisan make:action ShipOrder --events          # + a ShipOrderEvent enum wired through #[EmitsEvents]
+```
+
+`--force` overwrites existing files. To customize the generated code, place your own `action.stub`, `action.events.stub` or `action-event.stub` in your application's `stubs/` directory — it takes precedence over the package's.
+
 ### Running an action
 
 Actions resolve through the container, so constructor injection works like anywhere else in Laravel — inject it, or create one yourself with `make()`:
