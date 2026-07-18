@@ -2,6 +2,7 @@
 
 use Iak\Action\EmitsEvents;
 use Iak\Action\HandlesEvents;
+use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\ClosureActionChild;
 use Iak\Action\Tests\TestClasses\ComposesHandlesEvents;
@@ -156,6 +157,36 @@ describe('HandlesEvents Trait', function () {
         expect($eventsReceived[0]['data'])->toBe('data-a');
         expect($eventsReceived[1]['event'])->toBe('test.event.b');
         expect($eventsReceived[1]['data'])->toBe('data-b');
+    });
+
+    it('keeps the chain through forwardEvents(): wrappers configured before still apply', function () {
+        $received = [];
+        $count = 0;
+
+        $closure = function ($action) use (&$count) {
+            $count++;
+            $action->event('test.event.a', 'forwarded');
+
+            return 'ok';
+        };
+
+        ClosureAction::make()
+            ->on('test.event.a', function ($data) use (&$received) {
+                $received[] = $data;
+            })
+            ->handle(function () use ($closure) {
+                $chain = ClosureAction::make()->idempotent('fwd-chain')->forwardEvents(['test.event.a']);
+
+                expect($chain)->toBeInstanceOf(PendingAction::class);
+                expect($chain->handle($closure))->toBe('ok');
+
+                // The idempotency configured before forwardEvents() survived
+                // the call, so a second run is served from cache.
+                ClosureAction::make()->idempotent('fwd-chain')->forwardEvents(['test.event.a'])->handle($closure);
+            });
+
+        expect($count)->toBe(1);
+        expect($received)->toBe(['forwarded']);
     });
 
     it('get allowed events returns events from attribute', function () {

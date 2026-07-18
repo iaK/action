@@ -5,7 +5,6 @@ namespace Iak\Action;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
-use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Trace;
 use Illuminate\Support\Facades\Cache;
 use UnitEnum;
@@ -31,10 +30,9 @@ final class Inline
     private function __construct() {}
 
     /**
-     * Run the closure immediately. The run is wrapper-mediated even without
-     * wrappers, so — unlike a bare $action->handle() on a class action — it
-     * is attributed in log context and dispatches the ActionStarted /
-     * ActionCompleted / ActionFailed lifecycle events, like observed().
+     * Run the closure immediately, without any wrapper feature. Like every
+     * unobserved run it stays silent — no lifecycle events, no log context;
+     * start from Inline::observed() to opt a run in.
      *
      * @template TReturn
      *
@@ -64,15 +62,26 @@ final class Inline
 
     /**
      * Run the closure at most once per idempotency key, returning the cached
-     * result of the first successful run afterwards. All inline actions share
-     * one key namespace (they share one class) — choose keys accordingly.
-     * See PendingAction::idempotent().
+     * result of the first successful run afterwards. The key is used
+     * verbatim as the cache key. See PendingAction::idempotent().
      *
      * @return PendingAction<InlineAction>
      */
     public static function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
     {
         return (new PendingAction(new InlineAction))->idempotent($key, $ttl, $store);
+    }
+
+    /**
+     * Run the closure at most once per key, keeping nothing but the key —
+     * later calls are skipped and answer null; no result is cached. The key
+     * is used verbatim as the cache key. See PendingAction::once().
+     *
+     * @return PendingAction<InlineAction>
+     */
+    public static function once(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
+    {
+        return (new PendingAction(new InlineAction))->once($key, $ttl, $store);
     }
 
     /**
@@ -183,8 +192,8 @@ final class Inline
     }
 
     /**
-     * Opt the run into the lifecycle events explicitly. Bare Inline::handle()
-     * already dispatches them; this exists for symmetry with class actions.
+     * Opt the run into the observability envelope — lifecycle events and
+     * log-context attribution — exactly like observed() on a class action.
      *
      * @return PendingAction<InlineAction>
      */
@@ -228,11 +237,11 @@ final class Inline
 
     /**
      * Forget the cached idempotency result for the given key — the static
-     * twin of Action::forgetIdempotency(), applying the shared
-     * InlineAction key scope.
+     * twin of Action::forgetIdempotency(). The key is forgotten verbatim,
+     * exactly the cache key idempotent() and once() use.
      */
     public static function forgetIdempotency(string $key, ?string $store = null): void
     {
-        Cache::store($store)->forget(Idempotency::keyFor(InlineAction::class, $key));
+        Cache::store($store)->forget($key);
     }
 }

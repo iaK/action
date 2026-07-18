@@ -50,8 +50,15 @@ describe('lifecycle events', function () {
         Event::assertNotDispatched(ActionCompleted::class);
     });
 
-    it('fires for every wrapper feature, not just observed()', function () {
+    it('stays silent for wrapper features without observed()', function () {
         ClosureAction::make()->retry(times: 2)->handle(fn () => 'done');
+
+        Event::assertNotDispatched(ActionStarted::class);
+        Event::assertNotDispatched(ActionCompleted::class);
+    });
+
+    it('fires alongside any wrapper feature once observed() is chained', function () {
+        ClosureAction::make()->retry(times: 2)->observed()->handle(fn () => 'done');
 
         Event::assertDispatched(ActionStarted::class);
         Event::assertDispatched(ActionCompleted::class);
@@ -60,8 +67,8 @@ describe('lifecycle events', function () {
     it('fires on an idempotent cache hit, carrying the cached result', function () {
         $action = ClosureAction::make();
 
-        $action->idempotent('observed-key')->handle(fn () => 'cached');
-        $action->idempotent('observed-key')->handle(fn () => 'never');
+        $action->idempotent('observed-key')->observed()->handle(fn () => 'cached');
+        $action->idempotent('observed-key')->observed()->handle(fn () => 'never');
 
         Event::assertDispatchedTimes(ActionCompleted::class, 2);
         Event::assertDispatched(ActionCompleted::class, fn (ActionCompleted $e) => $e->result === 'cached');
@@ -83,6 +90,7 @@ describe('lifecycle events', function () {
     it('reports the fallback value as the completed result', function () {
         $result = ClosureAction::make()
             ->fallback(fn (Throwable $e) => 'degraded')
+            ->observed()
             ->handle(function () {
                 throw new RuntimeException('boom');
             });

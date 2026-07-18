@@ -13,6 +13,7 @@ use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
+use Iak\Action\Execution\Once;
 use Iak\Action\Execution\Retry;
 use Iak\Action\Execution\Throttle;
 use Iak\Action\Execution\Trace;
@@ -61,6 +62,7 @@ class PendingAction
         'fallback',
         'memoize',
         'idempotent',
+        'once',
         'withoutOverlapping',
         'retry',
         'circuitBreaker',
@@ -79,6 +81,12 @@ class PendingAction
      * @var array<string, Middleware>
      */
     protected array $middleware = [];
+
+    /**
+     * Whether observed() opted this run into the observability envelope —
+     * the lifecycle events and the log-context attribution.
+     */
+    protected bool $observed = false;
 
     protected bool $tracing = false;
 
@@ -103,13 +111,30 @@ class PendingAction
      * Run handle() at most once per idempotency key, returning the cached
      * result of the first successful run afterwards. Only successful runs
      * consume the key; if handle() throws, the exception propagates and the
-     * next call executes again. Keys are scoped per action class.
+     * next call executes again. The key is used verbatim as the cache key.
      *
      * @return $this
      */
     public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
     {
-        $this->middleware['idempotent'] = new Idempotency($this->action::class, $key, $ttl, $store);
+        $this->middleware['idempotent'] = new Idempotency($key, $ttl, $store);
+
+        return $this;
+    }
+
+    /**
+     * Run handle() at most once per key, keeping nothing but the key: the
+     * first successful run consumes it and every later call is skipped,
+     * answering null — unlike idempotent() no result is cached or replayed.
+     * The key is used verbatim as the cache key, and any existing entry
+     * under it counts as consumed, whoever wrote it. Only successful runs
+     * consume the key; if handle() throws, the key stays free.
+     *
+     * @return $this
+     */
+    public function once(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): static
+    {
+        $this->middleware['once'] = new Once($key, $ttl, $store);
 
         return $this;
     }
@@ -171,15 +196,18 @@ class PendingAction
     }
 
     /**
-     * Opt a plain call into the lifecycle events without any other wrapper
-     * feature. Every wrapper-mediated invocation already dispatches
-     * ActionStarted / ActionCompleted / ActionFailed; this exists for calls
-     * that want only the events.
+     * Opt this run into the observability envelope: the ActionStarted /
+     * ActionCompleted / ActionFailed lifecycle events and the log-context
+     * attribution. Nothing dispatches them implicitly — the wrapper
+     * features do exactly their own job — so adding a retry() or an
+     * idempotency key never changes what your logs or listeners see.
      *
      * @return $this
      */
     public function observed(): static
     {
+        $this->observed = true;
+
         return $this;
     }
 
@@ -196,6 +224,22 @@ class PendingAction
     public function on(string|UnitEnum $event, callable $callback): static
     {
         $this->action->on($event, $callback);
+
+        return $this;
+    }
+
+    /**
+     * Enable event forwarding on the wrapped action — and keep the chain,
+     * for the same reason on() does. The ancestors are captured here, so
+     * call forwardEvents() from within the scope that should receive the
+     * events. See HandlesEvents::forwardEvents().
+     *
+     * @param  array<int, string|UnitEnum>|null  $events  The events to forward; null forwards every event the action declares as allowed.
+     * @return $this
+     */
+    public function forwardEvents(?array $events = null): static
+    {
+        $this->action->forwardEvents($events);
 
         return $this;
     }
@@ -346,14 +390,21 @@ class PendingAction
 
     /**
      * Whether the underlying action ran on the last handle() call: null when
-     * idempotent() is not configured (or before handle() runs), true if it
-     * executed, false if the result was served from the idempotency cache.
+     * neither idempotent() nor once() is configured (or before handle()
+     * runs), true if it executed, false if the call was served from the
+     * idempotency cache or skipped on a consumed once() key.
      */
     public function wasExecuted(): ?bool
     {
         $idempotency = $this->middleware['idempotent'] ?? null;
 
-        return $idempotency instanceof Idempotency ? $idempotency->wasExecuted() : null;
+        if ($idempotency instanceof Idempotency) {
+            return $idempotency->wasExecuted();
+        }
+
+        $once = $this->middleware['once'] ?? null;
+
+        return $once instanceof Once ? $once->wasExecuted() : null;
     }
 
     /**
@@ -397,22 +448,27 @@ class PendingAction
     }
 
     /**
-     * Send the invocation through the configured middleware, attributed in
-     * Laravel's log Context for the duration of the run.
+     * Send the invocation through the configured middleware. An observed()
+     * run is additionally attributed in Laravel's log Context for its
+     * duration; an unobserved run leaves the context untouched.
      *
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
      */
     protected function through(Closure $invoke, ?array $args): mixed
     {
+        if (! $this->observed) {
+            return $this->throughChain($invoke, $args);
+        }
+
         return ActionContext::within($this->action, fn (): mixed => $this->throughChain($invoke, $args));
     }
 
     /**
      * Send the invocation through the configured middleware, nested in the
      * fixed ORDER (outermost first) regardless of chaining order, with the
-     * lifecycle events dispatched around the whole chain and the trace
-     * recorded when tracing is enabled.
+     * lifecycle events dispatched around the whole chain when the run is
+     * observed() and the trace recorded when tracing is enabled.
      *
      * @param  Closure(): mixed  $invoke
      * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
@@ -450,7 +506,10 @@ class PendingAction
         $memoryBefore = memory_get_usage(true);
 
         $recorder?->record('action', TraceEvent::Started);
-        Event::dispatch(new ActionStarted($this->action));
+
+        if ($this->observed) {
+            Event::dispatch(new ActionStarted($this->action));
+        }
 
         try {
             $result = $invoke();
@@ -462,9 +521,11 @@ class PendingAction
             ]);
             $trace = $this->finishTrace($recorder);
 
-            Event::dispatch(new ActionFailed(
-                $this->action, $e, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
-            ));
+            if ($this->observed) {
+                Event::dispatch(new ActionFailed(
+                    $this->action, $e, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
+                ));
+            }
 
             $this->reportTrace($trace);
 
@@ -475,9 +536,11 @@ class PendingAction
         $recorder?->record('action', TraceEvent::Completed, ['duration_ms' => $durationMs]);
         $trace = $this->finishTrace($recorder);
 
-        Event::dispatch(new ActionCompleted(
-            $this->action, $result, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
-        ));
+        if ($this->observed) {
+            Event::dispatch(new ActionCompleted(
+                $this->action, $result, $durationMs, memory_get_usage(true) - $memoryBefore, $trace
+            ));
+        }
 
         $this->reportTrace($trace);
 

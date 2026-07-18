@@ -4,7 +4,6 @@ namespace Iak\Action;
 
 use DateInterval;
 use DateTimeInterface;
-use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\MemoizedResults;
 use Iak\Action\Execution\Trace;
 use Iak\Action\Testing\Testable;
@@ -117,16 +116,33 @@ abstract class Action
      * returning the cached result of the first successful run afterwards.
      *
      * Only successful runs consume the key; if handle() throws, the exception
-     * propagates and the next call executes again. Keys are scoped per action
-     * class. Pass a TTL (seconds, DateInterval or expiry) to expire the entry,
-     * or null to remember it forever, and a cache store name to override the
-     * default store.
+     * propagates and the next call executes again. The key is used verbatim
+     * as the cache key. Pass a TTL (seconds, DateInterval or expiry) to
+     * expire the entry, or null to remember it forever, and a cache store
+     * name to override the default store.
      *
      * @return PendingAction<static>
      */
     public function idempotent(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
     {
         return (new PendingAction($this))->idempotent($key, $ttl, $store);
+    }
+
+    /**
+     * Wrap the action so handle() runs at most once per key, keeping nothing
+     * but the key: the first successful run consumes it and every later call
+     * is skipped, answering null — unlike idempotent() no result is cached.
+     *
+     * The key is used verbatim as the cache key, and any existing entry
+     * under it counts as consumed, whoever wrote it. Only successful runs
+     * consume the key; if handle() throws, the key stays free. TTL and store
+     * behave as on idempotent().
+     *
+     * @return PendingAction<static>
+     */
+    public function once(string $key, DateInterval|DateTimeInterface|int|null $ttl = null, ?string $store = null): PendingAction
+    {
+        return (new PendingAction($this))->once($key, $ttl, $store);
     }
 
     /**
@@ -192,9 +208,11 @@ abstract class Action
     }
 
     /**
-     * Opt this call into the ActionStarted / ActionCompleted / ActionFailed
-     * lifecycle events without any other wrapper feature. (Any wrapper
-     * feature dispatches them already; plain handle() calls cannot.)
+     * Opt this call into the observability envelope: the ActionStarted /
+     * ActionCompleted / ActionFailed lifecycle events and the log-context
+     * attribution. Nothing opts in implicitly — the wrapper features do
+     * exactly their own job and stay silent — so this is the one switch,
+     * chainable with any feature.
      *
      * @return PendingAction<static>
      */
@@ -287,12 +305,12 @@ abstract class Action
 
     /**
      * Forget the cached idempotency result for the given key, so the next
-     * idempotent() run for that key executes again. Applies the same
-     * class-scoped key idempotent() uses.
+     * idempotent() run for that key executes again. The key is forgotten
+     * verbatim — exactly the cache key idempotent() and once() use.
      */
     public function forgetIdempotency(string $key, ?string $store = null): void
     {
-        Cache::store($store)->forget(Idempotency::keyFor(static::class, $key));
+        Cache::store($store)->forget($key);
     }
 
     /**

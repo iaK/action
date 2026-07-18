@@ -19,6 +19,8 @@ enum TraceEvent: string
     case MemoizeHit = 'memoize_hit';
     case IdempotencyHit = 'idempotency_hit';
     case IdempotencyStored = 'idempotency_stored';
+    case OnceHit = 'once_hit';
+    case OnceStored = 'once_stored';
     case LockAcquired = 'lock_acquired';
     case RetryAttempt = 'retry_attempt';
     case RetrySlept = 'retry_slept';
@@ -46,6 +48,8 @@ enum TraceEvent: string
             self::MemoizeHit => 'memoize: served the remembered result',
             self::IdempotencyHit => sprintf("idempotency: served the cached result for '%s'", (string) ($context['key'] ?? '?')),
             self::IdempotencyStored => sprintf("idempotency: result stored for '%s'", (string) ($context['key'] ?? '?')),
+            self::OnceHit => sprintf("once: skipped, '%s' is already consumed", (string) ($context['key'] ?? '?')),
+            self::OnceStored => sprintf("once: consumed '%s'", (string) ($context['key'] ?? '?')),
             self::LockAcquired => sprintf("lock: acquired for '%s'", (string) ($context['key'] ?? '?')),
             self::RetryAttempt => sprintf('retry: attempt %s failed (%s)', (string) ($context['attempt'] ?? '?'), (string) ($context['exception'] ?? 'unknown')),
             self::RetrySlept => sprintf('retry: sleeping %sms', (string) ($context['milliseconds'] ?? '?')),

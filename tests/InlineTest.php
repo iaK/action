@@ -29,32 +29,49 @@ describe('bare Inline::handle()', function () {
         expect($received)->toBeInstanceOf(InlineAction::class);
     });
 
-    it('dispatches the lifecycle events around a bare run', function () {
+    it('stays silent: no lifecycle events without observed()', function () {
         Event::fake([ActionStarted::class, ActionCompleted::class, ActionFailed::class]);
 
         Inline::handle(fn () => 'done');
+
+        Event::assertNotDispatched(ActionStarted::class);
+        Event::assertNotDispatched(ActionCompleted::class);
+        Event::assertNotDispatched(ActionFailed::class);
+    });
+
+    it('leaves the log context untouched without observed()', function () {
+        $seen = Inline::handle(fn (): mixed => Context::get('action'));
+
+        expect($seen)->toBeNull();
+        expect(Context::has('action'))->toBeFalse();
+    });
+
+    it('dispatches the lifecycle events when observed()', function () {
+        Event::fake([ActionStarted::class, ActionCompleted::class, ActionFailed::class]);
+
+        Inline::observed()->handle(fn () => 'done');
 
         Event::assertDispatched(ActionStarted::class, fn (ActionStarted $e) => $e->action instanceof InlineAction);
         Event::assertDispatched(ActionCompleted::class, fn (ActionCompleted $e) => $e->result === 'done');
         Event::assertNotDispatched(ActionFailed::class);
     });
 
-    it('dispatches failed and rethrows when the closure throws', function () {
+    it('dispatches failed and rethrows when an observed closure throws', function () {
         Event::fake([ActionStarted::class, ActionCompleted::class, ActionFailed::class]);
 
         $throwing = function (): void {
             throw new RuntimeException('boom');
         };
 
-        expect(fn () => Inline::handle($throwing))
+        expect(fn () => Inline::observed()->handle($throwing))
             ->toThrow(RuntimeException::class, 'boom');
 
         Event::assertDispatched(ActionFailed::class, fn (ActionFailed $e) => $e->exception instanceof RuntimeException);
         Event::assertNotDispatched(ActionCompleted::class);
     });
 
-    it('attributes the run in log context and restores after', function () {
-        $seen = Inline::handle(fn (): mixed => Context::get('action'));
+    it('attributes an observed run in log context and restores after', function () {
+        $seen = Inline::observed()->handle(fn (): mixed => Context::get('action'));
 
         expect($seen)->toBe(InlineAction::class);
         expect(Context::has('action'))->toBeFalse();
