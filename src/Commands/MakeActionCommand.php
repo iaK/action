@@ -24,7 +24,12 @@ class MakeActionCommand extends Command
 
     public function handle(): int
     {
-        $name = str_replace('\\', '/', $this->argument('name'));
+        // Command::argument()'s inferred type differs across larastan
+        // versions (exact string read from the signature vs Symfony's full
+        // union), so go through the raw input: getArgument() is mixed on
+        // every version, making the narrowing legitimate everywhere.
+        $nameArgument = $this->input->getArgument('name');
+        $name = str_replace('\\', '/', is_string($nameArgument) ? $nameArgument : '');
         $segments = array_values(array_filter(explode('/', $name), static fn (string $part): bool => $part !== ''));
 
         if ($segments === []) {
