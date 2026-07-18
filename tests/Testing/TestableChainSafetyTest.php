@@ -41,6 +41,7 @@ describe('Testable chain safety', function () {
         'withoutOverlapping' => ['withoutOverlapping', ['key']],
         'transactional' => ['transactional', []],
         'memoize' => ['memoize', ['key']],
+        'once' => ['once', ['key']],
         'observed' => ['observed', []],
         'trace' => ['trace', []],
         'dumpTrace' => ['dumpTrace', []],

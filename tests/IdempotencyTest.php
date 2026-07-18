@@ -37,15 +37,16 @@ describe('idempotent()', function () {
         expect($second)->toBe('result');
     });
 
-    it('scopes keys per action class so different actions do not collide', function () {
-        $countA = 0;
+    it('uses the given key verbatim as the cache key', function () {
+        ClosureAction::make()->idempotent('verbatim-key')->handle(fn () => 'value');
+
+        expect(Cache::get('verbatim-key'))->toBe(['result' => 'value']);
+    });
+
+    it('shares the key across action classes', function () {
         $countB = 0;
 
-        $resultA = ClosureAction::make()->idempotent('shared')->handle(function () use (&$countA) {
-            $countA++;
-
-            return 'A';
-        });
+        $resultA = ClosureAction::make()->idempotent('shared')->handle(fn () => 'A');
 
         $resultB = OtherClosureAction::make()->idempotent('shared')->handle(function () use (&$countB) {
             $countB++;
@@ -54,9 +55,8 @@ describe('idempotent()', function () {
         });
 
         expect($resultA)->toBe('A');
-        expect($resultB)->toBe('B');
-        expect($countA)->toBe(1);
-        expect($countB)->toBe(1);
+        expect($resultB)->toBe('A');
+        expect($countB)->toBe(0);
     });
 
     it('caches a null result as executed', function () {

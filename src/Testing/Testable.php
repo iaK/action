@@ -706,7 +706,7 @@ class Testable
      */
     protected const WRAPPER_METHODS = [
         'retry', 'fallback', 'circuitBreaker', 'throttle', 'withoutOverlapping',
-        'transactional', 'memoize', 'observed', 'trace', 'dumpTrace', 'ddTrace', 'defer',
+        'transactional', 'memoize', 'once', 'observed', 'trace', 'dumpTrace', 'ddTrace', 'defer',
     ];
 
     /**

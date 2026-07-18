@@ -17,9 +17,9 @@ use Illuminate\Support\Facades\Context;
  * is restored afterwards; a user-set literal null is indistinguishable from
  * an absent key and is forgotten instead.
  *
- * @internal Wrapped around every wrapper-mediated invocation (PendingAction)
- * and every Testable run. A bare $action->handle() call never passes through
- * package code and cannot be attributed.
+ * @internal Wrapped around observed() invocations (PendingAction) and every
+ * Testable run. Unobserved runs — wrapper features without observed(), and
+ * bare $action->handle() calls — leave the context untouched.
  */
 final class ActionContext
 {

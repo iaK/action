@@ -17,6 +17,13 @@ describe('automatic log context', function () {
         expect(Context::has('action'))->toBeFalse();
     });
 
+    it('leaves the context untouched for wrapper features without observed()', function () {
+        $seen = ClosureAction::make()->retry(times: 2)->handle(fn (): mixed => Context::get('action'));
+
+        expect($seen)->toBeNull();
+        expect(Context::has('action'))->toBeFalse();
+    });
+
     it('covers the Testable execute path', function () {
         $seen = ClosureAction::test()->handle(fn (): mixed => Context::get('action'));
 
