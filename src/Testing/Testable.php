@@ -765,7 +765,7 @@ class Testable
      * @param  Closure(TAction): TReturn  $callback
      * @return TReturn
      */
-    public function run(Closure $callback): mixed
+    public function then(Closure $callback): mixed
     {
         // The instrument wrappers erase the closure's return type, so the
         // result is claimed back as TReturn here - the same trust the
@@ -821,7 +821,7 @@ class Testable
     }
 
     /**
-     * The execution flow behind handle() and run(): the idempotency wrapper
+     * The execution flow behind handle() and then(): the idempotency wrapper
      * (when configured) around the instrumented run.
      *
      * @param  Closure(): mixed  $invoke
@@ -832,14 +832,14 @@ class Testable
             // Wrap the whole instrumented run: a cache hit short-circuits
             // before any mock or proxy is bound, so there is nothing to
             // restore and nothing to report.
-            return $this->idempotency->run(fn (): mixed => $this->handleInstrumented($invoke));
+            return $this->idempotency->then(fn (): mixed => $this->handleInstrumented($invoke));
         }
 
         return $this->handleInstrumented($invoke);
     }
 
     /**
-     * The instrumented execution flow behind handle() and run().
+     * The instrumented execution flow behind handle() and then().
      *
      * @param  Closure(): mixed  $execute  The innermost invocation of the action
      */

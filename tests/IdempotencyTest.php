@@ -185,7 +185,7 @@ describe('idempotent()', function () {
         expect($wrapper)->toBeInstanceOf(PendingAction::class);
     });
 
-    it('runs once via run() and shares the cache entry with handle()', function () {
+    it('runs once via then() and shares the cache entry with handle()', function () {
         $count = 0;
         $closure = function () use (&$count) {
             $count++;
@@ -195,7 +195,7 @@ describe('idempotent()', function () {
 
         $action = ClosureAction::make();
 
-        $viaRun = $action->idempotent('run-key')->run(function (ClosureAction $received) use ($action, $closure) {
+        $viaThen = $action->idempotent('run-key')->then(function (ClosureAction $received) use ($action, $closure) {
             expect($received)->toBe($action);
 
             return $received->handle($closure);
@@ -203,24 +203,24 @@ describe('idempotent()', function () {
 
         // The same key is already consumed, whichever entry point is used.
         $viaHandle = $action->idempotent('run-key')->handle($closure);
-        $viaRunAgain = $action->idempotent('run-key')->run(fn (ClosureAction $a) => $a->handle($closure));
+        $viaThenAgain = $action->idempotent('run-key')->then(fn (ClosureAction $a) => $a->handle($closure));
 
         expect($count)->toBe(1);
-        expect($viaRun)->toBe('value');
+        expect($viaThen)->toBe('value');
         expect($viaHandle)->toBe('value');
-        expect($viaRunAgain)->toBe('value');
+        expect($viaThenAgain)->toBe('value');
     });
 
-    it('reports wasExecuted() transitions for run()', function () {
+    it('reports wasExecuted() transitions for then()', function () {
         $wrapper = ClosureAction::make()->idempotent('run-executed-key');
 
         expect($wrapper->wasExecuted())->toBeNull();
 
-        $wrapper->run(fn (ClosureAction $a) => $a->handle(fn () => 'value'));
+        $wrapper->then(fn (ClosureAction $a) => $a->handle(fn () => 'value'));
 
         expect($wrapper->wasExecuted())->toBeTrue();
 
-        $wrapper->run(fn (ClosureAction $a) => $a->handle(fn () => 'value'));
+        $wrapper->then(fn (ClosureAction $a) => $a->handle(fn () => 'value'));
 
         expect($wrapper->wasExecuted())->toBeFalse();
     });

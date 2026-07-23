@@ -190,7 +190,7 @@ abstract class Action
     /**
      * Remember the first successful result per key for the rest of the
      * process and return it without executing on later calls. See
-     * PendingAction::memoize() for the key derivation and run() caveat.
+     * PendingAction::memoize() for the key derivation and then() caveat.
      *
      * @return PendingAction<static>
      */
@@ -259,7 +259,7 @@ abstract class Action
     /**
      * Run the action after the response has been sent, via Laravel's
      * defer(). The closure receives the action with full typing, like
-     * PendingAction::run().
+     * PendingAction::then().
      *
      * @param  \Closure(static): mixed  $callback
      */

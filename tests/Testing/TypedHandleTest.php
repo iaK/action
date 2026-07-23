@@ -4,14 +4,14 @@ use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Collection;
 
 describe('Typed handle()', function () {
-    it('runs the action through run() with instruments firing', function () {
+    it('runs the action through then() with instruments firing', function () {
         $profiles = null;
 
         $result = ClosureAction::test()
             ->profile(function (Collection $received) use (&$profiles) {
                 $profiles = $received;
             })
-            ->run(fn (ClosureAction $action) => $action->handle(fn () => 'typed'));
+            ->then(fn (ClosureAction $action) => $action->handle(fn () => 'typed'));
 
         expect($result)->toBe('typed')
             ->and($profiles)->toHaveCount(1);
@@ -26,16 +26,16 @@ describe('Typed handle()', function () {
             ->toBe(['test.event.a', 'test.event.b']);
     });
 
-    it('chains run() with idempotent()', function () {
+    it('chains then() with idempotent()', function () {
         $testable = ClosureAction::test()->idempotent('typed-run-key');
-        $first = $testable->run(fn (ClosureAction $action) => $action->handle(fn () => 'first'));
+        $first = $testable->then(fn (ClosureAction $action) => $action->handle(fn () => 'first'));
 
         expect($first)->toBe('first')
             ->and($testable->wasExecuted())->toBeTrue();
 
         $second = ClosureAction::test()
             ->idempotent('typed-run-key')
-            ->run(fn (ClosureAction $action) => $action->handle(fn () => 'second'));
+            ->then(fn (ClosureAction $action) => $action->handle(fn () => 'second'));
 
         expect($second)->toBe('first');
     });

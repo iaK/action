@@ -74,8 +74,8 @@ describe('lifecycle events', function () {
         Event::assertDispatched(ActionCompleted::class, fn (ActionCompleted $e) => $e->result === 'cached');
     });
 
-    it('fires for the run() path', function () {
-        ClosureAction::make()->observed()->run(fn (ClosureAction $a) => $a->handle(fn () => 'via-run'));
+    it('fires for the then() path', function () {
+        ClosureAction::make()->observed()->then(fn (ClosureAction $a) => $a->handle(fn () => 'via-run'));
 
         Event::assertDispatched(ActionCompleted::class, fn (ActionCompleted $e) => $e->result === 'via-run');
     });

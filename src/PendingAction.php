@@ -43,7 +43,7 @@ use function Illuminate\Support\defer;
  * `@mixin TAction` projects the wrapped action's own handle() signature onto
  * this wrapper (typed arguments and return in PHPStan), and __call intercepts
  * the invocation. Editors that do not resolve generic mixins yet can use
- * run() for the same typing through a closure.
+ * then() for the same typing through a closure.
  *
  * @template-covariant TAction of Action
  *
@@ -182,7 +182,7 @@ class PendingAction
      * process (container-scoped, so Octane and the test runner flush it for
      * free) and return it without executing on later calls. The key derives
      * from the handle() arguments — pass one explicitly for unserializable
-     * arguments or when executing through run(). Keys are scoped per action
+     * arguments or when executing through then(). Keys are scoped per action
      * class. Flush with Action::flushMemoized().
      *
      * @return $this
@@ -245,7 +245,7 @@ class PendingAction
     }
 
     /**
-     * Record a decision-by-decision trace of the next handle()/run(): what
+     * Record a decision-by-decision trace of the next handle()/then(): what
      * each configured wrapper did and when. Read it afterwards with
      * lastTrace(), receive it in the optional callback — called after the
      * run, also when it throws, which is when a trace matters most — and
@@ -274,7 +274,7 @@ class PendingAction
 
     /**
      * Print the trace summary once the run finishes — also when it throws.
-     * Implies trace(); chain anywhere before handle()/run().
+     * Implies trace(); chain anywhere before handle()/then().
      *
      * @return $this
      */
@@ -303,14 +303,14 @@ class PendingAction
      * Run the action after the response has been sent, via Laravel's
      * defer(). The whole configured wrapper chain runs at that point, not
      * now. The closure receives the wrapped action with full typing — the
-     * same shape as run() — because a deferred call has no immediate result
+     * same shape as then() — because a deferred call has no immediate result
      * to return.
      *
      * @param  Closure(TAction): mixed  $callback
      */
     public function defer(Closure $callback): void
     {
-        defer(fn (): mixed => $this->run($callback));
+        defer(fn (): mixed => $this->then($callback));
     }
 
     /**
@@ -435,7 +435,7 @@ class PendingAction
      * @param  Closure(TAction): TReturn  $callback
      * @return TReturn
      */
-    public function run(Closure $callback): mixed
+    public function then(Closure $callback): mixed
     {
         // The middleware chain erases the invocation's type (a cached hit or
         // fallback value comes back as mixed), so the result is claimed back
@@ -453,7 +453,7 @@ class PendingAction
      * duration; an unobserved run leaves the context untouched.
      *
      * @param  Closure(): mixed  $invoke
-     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
+     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the then() path where no argument list exists.
      */
     protected function through(Closure $invoke, ?array $args): mixed
     {
@@ -471,7 +471,7 @@ class PendingAction
      * observed() and the trace recorded when tracing is enabled.
      *
      * @param  Closure(): mixed  $invoke
-     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the run() path where no argument list exists.
+     * @param  array<array-key, mixed>|null  $args  The handle() arguments, or null on the then() path where no argument list exists.
      */
     protected function throughChain(Closure $invoke, ?array $args): mixed
     {
