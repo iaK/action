@@ -80,6 +80,11 @@
                 "Iak\\Action\\ActionServiceProvider"
             ],
             "aliases": []
+        },
+        "phpstan": {
+            "includes": [
+                "phpstan/extension.neon"
+            ]
         }
     },
     "minimum-stability": "dev",

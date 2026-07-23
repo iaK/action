@@ -438,7 +438,7 @@ ChargeCustomer::make()->forgetIdempotency("charge:{$order->id}");
 
 #### Consuming a key without caching the result: `once()`
 
-`once()` is `idempotent()` for side effects: run at most once per key, but keep nothing except the key. The first successful run stores a bare `true` under the verbatim cache key; later calls are skipped and answer `null` — there is no result to replay:
+`once()` is `idempotent()` for side effects: run at most once per key, but keep nothing except the key. The first successful run stores a bare `true` under the verbatim cache key; every later call is skipped, answering `null` — or, when a `fallback()` is chained, the fallback value: the consumed key surfaces to the closure as an `OnceConsumedException` (rethrow to decline):
 
 ```php
 SendWelcomeEmail::make()->once("welcome-email:{$user->id}")->handle($user);
@@ -522,7 +522,7 @@ When many processes retry against the same recovering dependency, fixed backoffs
 $action->retry(times: 4, backoff: [100, 400, 800], jitter: true)->handle($order);
 ```
 
-**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action ultimately throws — including after exhausted retries or on an open circuit breaker. Rethrow from the closure to decline.
+**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action cannot produce a real result — it ultimately threw, or a chained `once()` key was consumed — including after exhausted retries or on an open circuit breaker. Rethrow from the closure to decline.
 
 **`circuitBreaker(key: null, threshold: 5, cooldown: 60, store: null)`** opens after `threshold` consecutive failures: further calls throw `CircuitOpenException` (with `availableIn()` seconds) without executing, giving the dependency `cooldown` seconds to recover before a single probe is let through. The breaker state is cache-backed and scoped to the action class by default — give the breakers of one shared dependency the same explicit key so they trip together across actions and processes.
 
@@ -593,6 +593,29 @@ fallback → memoize → idempotent → once → without overlapping → retry �
 ```
 
 Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached or memoized as a real result.
+
+## Static analysis
+
+The wrapper result types are honest by construction — `handle()` and `then()` carry the action's own return type through PHPStan generics — but two contracts cannot be expressed in types alone. The package ships two PHPStan rules that check them:
+
+- **`action.fallbackReturnType`** — a `fallback()` closure's return type must be a strict subtype of the action's `handle()` return type, because the fallback value becomes the chain's result. Rethrow-only closures (`never`) pass; actions without a declared `handle()` return type are skipped.
+- **`action.onceRequiresFallback`** — a chain that configures `once()` on a non-nullable result must also chain `fallback()`: a consumed key answers the fallback value (or `null` without one, which would belie the result type). Nullable, `void` and undeclared returns are exempt.
+
+With [`phpstan/extension-installer`](https://github.com/phpstan/extension-installer) (which larastan already suggests) the rules register automatically. Without it, include them manually:
+
+```neon
+includes:
+    - vendor/iak/action/phpstan/extension.neon
+```
+
+Both rules only fire on statically visible fluent chains and never guess: chains assembled across variables are not checked. Deliberate violations can be ignored per-identifier:
+
+```php
+// @phpstan-ignore action.onceRequiresFallback (result is discarded on purpose)
+$action->once('welcome:'.$user->id)->handle($user);
+```
+
+One honest caveat: the rules check the fallback closure against `handle()`. A `then()` closure that transforms the result to another type is your own transformation and is not cross-checked against the fallback.
 
 ## Testing
 
