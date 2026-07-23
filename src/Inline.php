@@ -42,7 +42,7 @@ final class Inline
     public static function handle(Closure $closure): mixed
     {
         // The middleware chain erases the invocation's type; claim it back
-        // at this single boundary, mirroring PendingAction::run().
+        // at this single boundary, mirroring PendingAction::then().
         /** @var TReturn $result */
         $result = (new PendingAction(new InlineAction))->handle($closure);
 

@@ -141,7 +141,7 @@ describe('once()', function () {
         expect($wrapper)->toBeInstanceOf(PendingAction::class);
     });
 
-    it('runs once via run() and shares the key with handle()', function () {
+    it('runs once via then() and shares the key with handle()', function () {
         $count = 0;
         $closure = function () use (&$count) {
             $count++;
@@ -151,12 +151,12 @@ describe('once()', function () {
 
         $action = ClosureAction::make();
 
-        $viaRun = $action->once('run-key')->run(fn (ClosureAction $a) => $a->handle($closure));
+        $viaThen = $action->once('run-key')->then(fn (ClosureAction $a) => $a->handle($closure));
 
         $viaHandle = $action->once('run-key')->handle($closure);
 
         expect($count)->toBe(1);
-        expect($viaRun)->toBe('value');
+        expect($viaThen)->toBe('value');
         expect($viaHandle)->toBeNull();
     });
 

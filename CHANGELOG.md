@@ -2,11 +2,15 @@
 
 All notable changes to `laravel-action` will be documented in this file.
 
+## Unreleased
+
+**Breaking changes**
+
+- `PendingAction::run()` and `Testable::run()` were renamed to `then()`. Behavior is unchanged: the closure receives the wrapped action with full typing, the invocation runs through the whole configured chain (a cached `idempotent()` hit still returns without the closure executing), and the closure's result is returned. The old name suggested the method itself executed the action and said nothing about the pass-through; `then()` follows `Pipeline::then()`, which runs the pipes with the given closure as the innermost destination. There is no `run()` alias — replace `->run(fn (MyAction $a) => ...)` with `->then(fn (MyAction $a) => ...)`. The `memoize()` missing-key exception message names `then()` accordingly.
+
 ## 2.0.0 - 2026-07-18
 
 Idempotency, retries, circuit breakers and more.
-
-## Unreleased
 
 **New features**
 

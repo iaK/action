@@ -88,14 +88,14 @@ describe('memoize()', function () {
             ->toThrow(InvalidArgumentException::class, 'explicit key');
     });
 
-    it('requires an explicit key with run()', function () {
-        expect(fn () => CountingAction::make()->memoize()->run(fn (CountingAction $a) => $a->handle(1)))
-            ->toThrow(InvalidArgumentException::class, 'run()');
+    it('requires an explicit key with then()', function () {
+        expect(fn () => CountingAction::make()->memoize()->then(fn (CountingAction $a) => $a->handle(1)))
+            ->toThrow(InvalidArgumentException::class, 'then()');
     });
 
-    it('memoizes through run() with an explicit key', function () {
-        $first = CountingAction::make()->memoize('via-run')->run(fn (CountingAction $a) => $a->handle(5));
-        $second = CountingAction::make()->memoize('via-run')->run(fn (CountingAction $a) => $a->handle(5));
+    it('memoizes through then() with an explicit key', function () {
+        $first = CountingAction::make()->memoize('via-run')->then(fn (CountingAction $a) => $a->handle(5));
+        $second = CountingAction::make()->memoize('via-run')->then(fn (CountingAction $a) => $a->handle(5));
 
         expect($first)->toBe(10);
         expect($second)->toBe(10);

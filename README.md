@@ -165,7 +165,7 @@ Inline::events(['report.sent'])
     });
 ```
 
-Everything on the wrapper works: `retry()`, `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `circuitBreaker()`, `throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the `run()` escape hatch.
+Everything on the wrapper works: `retry()`, `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `circuitBreaker()`, `throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the typed `then()` entry point.
 
 Two things to know:
 
@@ -456,12 +456,12 @@ $order = ChargeCustomer::make()->idempotent("charge:{$order->id}")->handle($orde
 // PHPStan knows $order is Order, and flags wrong arguments against ChargeCustomer::handle()
 ```
 
-Some editors don't resolve generic mixins yet for in-editor autocomplete (tracked upstream: [PhpStorm](https://youtrack.jetbrains.com/issue/WI-69638), [Intelephense](https://github.com/bmewburn/vscode-intelephense/issues/3280)). If that's you, `run()` gives the same typing through a closure that receives the action — full autocomplete and an inferred return everywhere, today:
+Some editors don't resolve generic mixins yet for in-editor autocomplete (tracked upstream: [PhpStorm](https://youtrack.jetbrains.com/issue/WI-69638), [Intelephense](https://github.com/bmewburn/vscode-intelephense/issues/3280)). If that's you, `then()` gives the same typing through a closure that receives the action — full autocomplete and an inferred return everywhere, today:
 
 ```php
 $order = ChargeCustomer::make()
     ->idempotent("charge:{$order->id}")
-    ->run(fn (ChargeCustomer $action) => $action->handle($order));
+    ->then(fn (ChargeCustomer $action) => $action->handle($order));
 ```
 
 Both entry points share the same key and cache entry — pick whichever reads better and switch freely.
@@ -556,7 +556,7 @@ TransferFunds::make()->transactional(attempts: 2)->handle($from, $to, $amount);
 $permissions = ResolvePermissions::make()->memoize()->handle($user->id);
 ```
 
-Pass an explicit key when the arguments cannot be serialized, or when executing through `run()` (a closure has no argument list to derive a key from). Flush everything with `Action::flushMemoized()`.
+Pass an explicit key when the arguments cannot be serialized, or when executing through `then()` (a closure has no argument list to derive a key from). Flush everything with `Action::flushMemoized()`.
 
 **`defer(fn (MyAction $a) => $a->handle(...))`** runs the action after the response has been sent, via Laravel's `defer()`. The whole configured wrapper chain runs at that point — an idempotency key, throttle budget or breaker state is consumed then, not now:
 
@@ -643,7 +643,7 @@ it('can fake an action', function () {
 
 ```php
 $result = SayHelloAction::test()
-    ->run(fn (SayHelloAction $action) => $action->handle());
+    ->then(fn (SayHelloAction $action) => $action->handle());
 ```
 
 ### Mocking actions in tests

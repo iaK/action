@@ -26,7 +26,7 @@ class Memoize implements Middleware
 
     /**
      * Resolve the memo key before the invocation: the explicit key when one
-     * was given, otherwise a hash of the invocation arguments. run() passes
+     * was given, otherwise a hash of the invocation arguments. then() passes
      * null (a closure has no argument list to derive a key from), which
      * makes an explicit key mandatory.
      *
@@ -43,7 +43,7 @@ class Memoize implements Middleware
 
         if ($args === null) {
             throw new InvalidArgumentException(
-                'memoize() needs an explicit key when the action is executed through run(): '
+                'memoize() needs an explicit key when the action is executed through then(): '
                 .'a closure has no argument list to derive one from.'
             );
         }
