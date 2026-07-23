@@ -16,9 +16,11 @@ use PHPStan\Type\ObjectType;
 /**
  * Walks a fluent wrapper chain backwards from a terminal call, collecting
  * the statically visible calls by name. A chain only counts as fully
- * visible when it roots in a bare action (every wrapper the expression ever
- * saw is then part of the walk) or in a static entry point on Inline or an
- * Action subclass. Anything else — a variable holding a preconfigured
+ * visible when every link's callee resolves to an Action or a
+ * PendingAction (per wrappedActionClass()) and it roots in a bare action
+ * (every wrapper the expression ever saw is then part of the walk) or in a
+ * static entry point on Inline or an Action subclass. Anything else — a
+ * foreign class sitting mid-chain, a variable holding a preconfigured
  * PendingAction, a dynamic method name, a foreign factory — returns null so
  * the rules stay silent rather than guess.
  *
@@ -40,6 +42,10 @@ final class FluentChain
 
         while ($node instanceof MethodCall) {
             if (! $node->name instanceof Identifier) {
+                return null;
+            }
+
+            if (self::wrappedActionClass($node->var, $scope) === null) {
                 return null;
             }
 

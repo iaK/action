@@ -108,3 +108,29 @@ function foreignOnce(NotOurOnce $notOurs): void
 {
     $notOurs->once('key')->handle();
 }
+
+class ForeignScheduler
+{
+    public function once(string $frequency): OnceIntAction
+    {
+        return new OnceIntAction;
+    }
+}
+
+class SchedulableAction extends Action
+{
+    public function handle(int $x): int
+    {
+        return $x;
+    }
+
+    public function scheduler(): ForeignScheduler
+    {
+        return new ForeignScheduler;
+    }
+}
+
+function foreignOnceInMiddleOfChain(SchedulableAction $action): void
+{
+    $action->scheduler()->once('daily')->handle(21); // silent: foreign once() in the middle of the chain
+}
