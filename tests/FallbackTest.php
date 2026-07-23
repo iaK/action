@@ -1,5 +1,6 @@
 <?php
 
+use Iak\Action\Exceptions\OnceConsumedException;
 use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Facades\Cache;
@@ -110,5 +111,17 @@ describe('fallback()', function () {
 
         expect($result)->toBe('gave-up: flaky');
         expect($attempts)->toBe(3);
+    });
+
+    it('answers for a consumed once() key, not only for exceptions', function () {
+        $action = ClosureAction::make();
+
+        $action->once('fallback-once-key')->handle(fn () => 'first');
+
+        $result = $action->once('fallback-once-key')
+            ->fallback(fn (Throwable $e) => $e instanceof OnceConsumedException ? 'skipped' : 'failed')
+            ->handle(fn () => 'first');
+
+        expect($result)->toBe('skipped');
     });
 });

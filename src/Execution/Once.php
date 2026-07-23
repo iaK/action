@@ -5,6 +5,7 @@ namespace Iak\Action\Execution;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Exceptions\OnceConsumedException;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
@@ -51,7 +52,7 @@ class Once implements Middleware
 
         // Fast path: skip a consumed key without touching a lock.
         if ($cache->has($this->key)) {
-            return $this->skip();
+            $this->skip();
         }
 
         $store = $cache->getStore();
@@ -79,7 +80,7 @@ class Once implements Middleware
 
             // Another caller may have consumed the key while we waited.
             if ($cache->has($this->key)) {
-                return $this->skip();
+                $this->skip();
             }
 
             return $this->execute($cache, $next);
@@ -91,14 +92,17 @@ class Once implements Middleware
     }
 
     /**
-     * Answer null for a consumed key and mark the invocation skipped.
+     * Mark the invocation skipped and signal the consumed key. The throw
+     * reaches a chained fallback() — outermost in the ORDER — whose closure
+     * answers for the skip, or is converted to null at the chain boundary
+     * when no fallback is configured.
      */
-    protected function skip(): mixed
+    protected function skip(): never
     {
         $this->executed = false;
         $this->recorder?->record('once', TraceEvent::OnceHit, ['key' => $this->key]);
 
-        return null;
+        throw new OnceConsumedException($this->key);
     }
 
     /**

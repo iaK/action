@@ -8,6 +8,7 @@ use DateTimeInterface;
 use Iak\Action\Events\ActionCompleted;
 use Iak\Action\Events\ActionFailed;
 use Iak\Action\Events\ActionStarted;
+use Iak\Action\Exceptions\OnceConsumedException;
 use Iak\Action\Execution\CircuitBreaker;
 use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
@@ -498,6 +499,23 @@ class PendingAction
 
             $next = $invoke;
             $invoke = static fn (): mixed => $middleware->handle($next);
+        }
+
+        // A consumed once() key surfaces as an OnceConsumedException so a
+        // configured fallback() (outermost) can answer for the skip. Without
+        // one, the original contract holds: the skip answers null. Converted
+        // inside the event/trace envelope, so a skip stays a completion —
+        // never a failure. Installed only when no fallback exists: a fallback
+        // that deliberately rethrows the exception must reach the caller.
+        if (isset($this->middleware['once']) && ! isset($this->middleware['fallback'])) {
+            $next = $invoke;
+            $invoke = static function () use ($next): mixed {
+                try {
+                    return $next();
+                } catch (OnceConsumedException) {
+                    return null;
+                }
+            };
         }
 
         // The events span the whole chain: a cached hit or a rescued run is
