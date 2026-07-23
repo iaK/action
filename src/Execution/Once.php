@@ -14,10 +14,12 @@ use Illuminate\Support\Facades\DB;
 /**
  * Runs the invocation at most once per key, keeping nothing but the key: the
  * first successful run stores a bare `true` under the verbatim cache key and
- * every later call is skipped, answering null — unlike idempotent() there is
- * no result to replay. Any existing entry under the key counts as consumed,
- * whoever wrote it. Only successful runs consume the key — if the invocation
- * throws, the exception propagates and the key stays free.
+ * every later call is skipped — unlike idempotent() there is no result to
+ * replay. A skip throws OnceConsumedException, which the outermost Fallback
+ * middleware turns into the fallback value, or the wrapper converts to null
+ * when no fallback is chained. Any existing entry under the key counts as
+ * consumed, whoever wrote it. Only successful runs consume the key — if the
+ * invocation throws, the exception propagates and the key stays free.
  *
  * @internal Configured via PendingAction::once().
  */

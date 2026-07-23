@@ -74,8 +74,10 @@ final class Inline
 
     /**
      * Run the closure at most once per key, keeping nothing but the key —
-     * later calls are skipped and answer null; no result is cached. The key
-     * is used verbatim as the cache key. See PendingAction::once().
+     * later calls are skipped and answer null, or a chained fallback()'s
+     * value (the consumed key arrives as an OnceConsumedException); no
+     * result is cached. The key is used verbatim as the cache key. See
+     * PendingAction::once().
      *
      * @return PendingAction<InlineAction>
      */
@@ -104,8 +106,8 @@ final class Inline
     }
 
     /**
-     * Answer with the closure's value when the run ultimately throws.
-     * See PendingAction::fallback().
+     * Answer with the closure's value when the run ultimately throws or a
+     * chained once() key is consumed. See PendingAction::fallback().
      *
      * @param  Closure(\Throwable): mixed  $fallback
      * @return PendingAction<InlineAction>

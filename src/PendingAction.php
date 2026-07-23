@@ -125,11 +125,14 @@ class PendingAction
 
     /**
      * Run handle() at most once per key, keeping nothing but the key: the
-     * first successful run consumes it and every later call is skipped,
-     * answering null — unlike idempotent() no result is cached or replayed.
-     * The key is used verbatim as the cache key, and any existing entry
-     * under it counts as consumed, whoever wrote it. Only successful runs
-     * consume the key; if handle() throws, the key stays free.
+     * first successful run consumes it and every later call is skipped —
+     * unlike idempotent() no result is cached or replayed. A skip answers
+     * null, or the fallback() value when one is chained: the consumed key
+     * surfaces to the fallback closure as an OnceConsumedException (rethrow
+     * to decline and the exception reaches the caller). The key is used
+     * verbatim as the cache key, and any existing entry under it counts as
+     * consumed, whoever wrote it. Only successful runs consume the key; if
+     * handle() throws, the key stays free.
      *
      * @return $this
      */
@@ -141,10 +144,12 @@ class PendingAction
     }
 
     /**
-     * Answer with the closure's value when handle() ultimately throws —
-     * whatever went wrong: the action itself, exhausted retries, an open
-     * circuit breaker. The closure receives the Throwable and may rethrow to
-     * decline. The fallback value is never cached as an idempotent result.
+     * Answer with the closure's value when handle() cannot produce a real
+     * result — whatever the reason: the action threw, retries exhausted, an
+     * open circuit breaker, or a consumed once() key (which arrives as an
+     * OnceConsumedException). The closure receives the Throwable and may
+     * rethrow to decline. The fallback value is never cached as an
+     * idempotent result.
      *
      * @param  Closure(Throwable): mixed  $fallback
      * @return $this
