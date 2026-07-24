@@ -131,7 +131,9 @@ abstract class Action
     /**
      * Wrap the action so handle() runs at most once per key, keeping nothing
      * but the key: the first successful run consumes it and every later call
-     * is skipped, answering null — unlike idempotent() no result is cached.
+     * is skipped — unlike idempotent() no result is cached. A skip answers
+     * null, or the fallback() value when one is chained (the consumed key
+     * arrives as an OnceConsumedException).
      *
      * The key is used verbatim as the cache key, and any existing entry
      * under it counts as consumed, whoever wrote it. Only successful runs
@@ -146,8 +148,9 @@ abstract class Action
     }
 
     /**
-     * Answer with the closure's value when handle() ultimately throws. The
-     * closure receives the Throwable and may rethrow to decline. See
+     * Answer with the closure's value when handle() cannot produce a real
+     * result — it ultimately threw, or a chained once() key was consumed.
+     * The closure receives the Throwable and may rethrow to decline. See
      * PendingAction::fallback() for how it composes with the other wrappers.
      *
      * @param  \Closure(\Throwable): mixed  $fallback

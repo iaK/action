@@ -1,5 +1,9 @@
 <?php
 
+use Iak\Action\Events\ActionCompleted;
+use Iak\Action\Events\ActionFailed;
+use Iak\Action\Exceptions\OnceConsumedException;
+use Iak\Action\Execution\TraceEvent;
 use Iak\Action\Inline;
 use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ArrayNoLockStore;
@@ -9,6 +13,7 @@ use Illuminate\Cache\Repository;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 beforeEach(function () {
     Cache::flush();
@@ -246,5 +251,102 @@ describe('once()', function () {
         expect($count)->toBe(1);
         expect($first)->toBe('ran');
         expect($second)->toBeNull();
+    });
+
+    it('routes a consumed key through fallback(), which receives the OnceConsumedException', function () {
+        $received = null;
+
+        $action = ClosureAction::make();
+
+        $action->once('rescued-key')->handle(fn () => 'real');
+
+        $second = $action->once('rescued-key')
+            ->fallback(function (Throwable $e) use (&$received) {
+                $received = $e;
+
+                return 'rescued';
+            })
+            ->handle(fn () => 'real');
+
+        expect($second)->toBe('rescued');
+        expect($received)->toBeInstanceOf(OnceConsumedException::class);
+        expect($received->key())->toBe('rescued-key');
+    });
+
+    it('propagates an OnceConsumedException rethrown from the fallback', function () {
+        $action = ClosureAction::make();
+
+        $action->once('declined-key')->handle(fn () => 'real');
+
+        $wrapper = $action->once('declined-key')->fallback(function (Throwable $e) {
+            throw $e;
+        });
+
+        expect(fn () => $wrapper->handle(fn () => 'real'))
+            ->toThrow(OnceConsumedException::class, 'The once key [declined-key] is already consumed.');
+    });
+
+    it('still reports wasExecuted() false when the fallback rescues a skip', function () {
+        $action = ClosureAction::make();
+
+        $action->once('was-executed-fallback-key')->handle(fn () => 'real');
+
+        $wrapper = $action->once('was-executed-fallback-key')->fallback(fn (Throwable $e) => 'rescued');
+        $wrapper->handle(fn () => 'real');
+
+        expect($wrapper->wasExecuted())->toBeFalse();
+    });
+
+    it('does not consume an outer idempotent() key when the once key is consumed', function () {
+        $count = 0;
+        $closure = function () use (&$count) {
+            $count++;
+
+            return 'value';
+        };
+
+        $action = ClosureAction::make();
+
+        $action->once('inner-once-key')->handle($closure);
+
+        // The skip propagates as an exception through idempotent(), so the
+        // idempotency key must stay free.
+        $skipped = $action->idempotent('outer-idem-key')->once('inner-once-key')->handle($closure);
+
+        expect($skipped)->toBeNull();
+        expect($count)->toBe(1);
+
+        $real = $action->idempotent('outer-idem-key')->handle($closure);
+
+        expect($real)->toBe('value');
+        expect($count)->toBe(2);
+    });
+
+    it('records OnceHit and FallbackUsed in the trace when a fallback rescues a skip', function () {
+        $action = ClosureAction::make();
+
+        $action->once('traced-once-key')->handle(fn () => 'real');
+
+        $wrapper = $action->once('traced-once-key')
+            ->fallback(fn (Throwable $e) => 'rescued')
+            ->trace();
+
+        $wrapper->handle(fn () => 'real');
+
+        expect($wrapper->lastTrace()->has(TraceEvent::OnceHit))->toBeTrue();
+        expect($wrapper->lastTrace()->has(TraceEvent::FallbackUsed))->toBeTrue();
+    });
+
+    it('dispatches ActionCompleted, not ActionFailed, for an observed converted skip', function () {
+        Event::fake([ActionCompleted::class, ActionFailed::class]);
+
+        $action = ClosureAction::make();
+
+        $action->once('observed-skip-key')->handle(fn () => 'real');
+        $result = $action->once('observed-skip-key')->observed()->handle(fn () => 'real');
+
+        expect($result)->toBeNull();
+        Event::assertDispatched(ActionCompleted::class);
+        Event::assertNotDispatched(ActionFailed::class);
     });
 });

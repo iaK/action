@@ -5,6 +5,7 @@ namespace Iak\Action\Execution;
 use Closure;
 use DateInterval;
 use DateTimeInterface;
+use Iak\Action\Exceptions\OnceConsumedException;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Facades\Cache;
@@ -13,10 +14,12 @@ use Illuminate\Support\Facades\DB;
 /**
  * Runs the invocation at most once per key, keeping nothing but the key: the
  * first successful run stores a bare `true` under the verbatim cache key and
- * every later call is skipped, answering null — unlike idempotent() there is
- * no result to replay. Any existing entry under the key counts as consumed,
- * whoever wrote it. Only successful runs consume the key — if the invocation
- * throws, the exception propagates and the key stays free.
+ * every later call is skipped — unlike idempotent() there is no result to
+ * replay. A skip throws OnceConsumedException, which the outermost Fallback
+ * middleware turns into the fallback value, or the wrapper converts to null
+ * when no fallback is chained. Any existing entry under the key counts as
+ * consumed, whoever wrote it. Only successful runs consume the key — if the
+ * invocation throws, the exception propagates and the key stays free.
  *
  * @internal Configured via PendingAction::once().
  */
@@ -51,7 +54,7 @@ class Once implements Middleware
 
         // Fast path: skip a consumed key without touching a lock.
         if ($cache->has($this->key)) {
-            return $this->skip();
+            $this->skip();
         }
 
         $store = $cache->getStore();
@@ -79,7 +82,7 @@ class Once implements Middleware
 
             // Another caller may have consumed the key while we waited.
             if ($cache->has($this->key)) {
-                return $this->skip();
+                $this->skip();
             }
 
             return $this->execute($cache, $next);
@@ -91,14 +94,17 @@ class Once implements Middleware
     }
 
     /**
-     * Answer null for a consumed key and mark the invocation skipped.
+     * Mark the invocation skipped and signal the consumed key. The throw
+     * reaches a chained fallback() — outermost in the ORDER — whose closure
+     * answers for the skip, or is converted to null at the chain boundary
+     * when no fallback is configured.
      */
-    protected function skip(): mixed
+    protected function skip(): never
     {
         $this->executed = false;
         $this->recorder?->record('once', TraceEvent::OnceHit, ['key' => $this->key]);
 
-        return null;
+        throw new OnceConsumedException($this->key);
     }
 
     /**
