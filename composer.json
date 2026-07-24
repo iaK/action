@@ -54,7 +54,10 @@
         "psr-4": {
             "Iak\\Action\\Tests\\": "tests/",
             "Workbench\\App\\": "workbench/app/"
-        }
+        },
+        "classmap": [
+            "tests/PHPStan/Data/"
+        ]
     },
     "scripts": {
         "post-autoload-dump": "@composer run prepare",
@@ -77,6 +80,11 @@
                 "Iak\\Action\\ActionServiceProvider"
             ],
             "aliases": []
+        },
+        "phpstan": {
+            "includes": [
+                "phpstan/extension.neon"
+            ]
         }
     },
     "minimum-stability": "dev",

@@ -1,0 +1,3 @@
+rules:
+    - Iak\Action\PHPStan\FallbackReturnTypeRule
+    - Iak\Action\PHPStan\OnceRequiresFallbackRule

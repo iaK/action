@@ -335,6 +335,14 @@ describe('once()', function () {
 
         expect($wrapper->lastTrace()->has(TraceEvent::OnceHit))->toBeTrue();
         expect($wrapper->lastTrace()->has(TraceEvent::FallbackUsed))->toBeTrue();
+
+        expect($wrapper->lastTrace()->first(TraceEvent::FallbackUsed)?->context['exception'])
+            ->toBe(OnceConsumedException::class);
+
+        $events = array_column($wrapper->lastTrace()->entries(), 'event');
+
+        expect(array_search(TraceEvent::OnceHit, $events, true))
+            ->toBeLessThan(array_search(TraceEvent::FallbackUsed, $events, true));
     });
 
     it('dispatches ActionCompleted, not ActionFailed, for an observed converted skip', function () {
@@ -346,6 +354,23 @@ describe('once()', function () {
         $result = $action->once('observed-skip-key')->observed()->handle(fn () => 'real');
 
         expect($result)->toBeNull();
+        Event::assertDispatched(ActionCompleted::class);
+        Event::assertNotDispatched(ActionFailed::class);
+    });
+
+    it('dispatches ActionCompleted, not ActionFailed, for an observed rescued skip', function () {
+        Event::fake([ActionCompleted::class, ActionFailed::class]);
+
+        $action = ClosureAction::make();
+
+        $action->once('observed-rescue-key')->handle(fn () => 'real');
+
+        $result = $action->once('observed-rescue-key')
+            ->fallback(fn (Throwable $e) => 'rescued')
+            ->observed()
+            ->handle(fn () => 'real');
+
+        expect($result)->toBe('rescued');
         Event::assertDispatched(ActionCompleted::class);
         Event::assertNotDispatched(ActionFailed::class);
     });

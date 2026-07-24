@@ -4,6 +4,10 @@ All notable changes to `laravel-action` will be documented in this file.
 
 ## Unreleased
 
+**New features**
+
+- Shipped PHPStan rules: `action.fallbackReturnType` verifies every `fallback()` closure returns a strict subtype of the action's `handle()` return type (the fallback value becomes the chain's result), and `action.onceRequiresFallback` requires a `fallback()` on any chain that configures `once()` with a non-nullable result type — together they make the wrapper result types statically honest, inline actions included. Auto-registered via `phpstan/extension-installer`; include `vendor/iak/action/phpstan/extension.neon` manually otherwise. Both rules stay silent on anything not statically visible (no false positives) and can be ignored per-identifier.
+
 **Breaking changes**
 
 - `PendingAction::run()` and `Testable::run()` were renamed to `then()`. Behavior is unchanged: the closure receives the wrapped action with full typing, the invocation runs through the whole configured chain (a cached `idempotent()` hit still returns without the closure executing), and the closure's result is returned. The old name suggested the method itself executed the action and said nothing about the pass-through; `then()` follows `Pipeline::then()`, which runs the pipes with the given closure as the innermost destination. There is no `run()` alias — replace `->run(fn (MyAction $a) => ...)` with `->then(fn (MyAction $a) => ...)`. The `memoize()` missing-key exception message names `then()` accordingly.
