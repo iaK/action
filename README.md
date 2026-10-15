@@ -13,7 +13,7 @@ For a guide on how I use actions, which is also the way this package is tailored
 
 The action pattern is awesome because it's dead simple. What this package aims to do, is to provide some helpers and save you from writing the boring boilerplate code, and focus on your business logic.
 
-Stuff like idempotency, concurrency control, database transactions, circuit breaking, retires and debugging is ready to use without it cluttering your code, easy for both humans and agents to reach for.
+Stuff like idempotency, concurrency control, rate limiting, database transactions, fallbacks and debugging is ready to use without it cluttering your code, easy for both humans and agents to reach for.
 
 Lets say you have a piece of code like this:
 
@@ -35,19 +35,18 @@ class ChargeOrderAction
 }
 ```
 
-In reality, you probably won't get away with a solution as simple as this. You will probably need transactions, maybe idempotency, and want to retry it on deadlocks or failures.
+In reality, you probably won't get away with a solution as simple as this. You will probably need transactions, maybe idempotency, and want to retry it on deadlocks.
 
 Instead of cluttering our beatiful and simple action with that logic, we can instead chain it on when we call it.
 
 ```php
 $payment = ChargeOrderAction::make()
     ->idempotent("order:{$order->id}:charge", ttl: now()->addDay())
-    ->retry(times: 3, backoff: [100, 1000])
     ->transactional(attempts: 2)
     ->handle($order);
 ```
 
-This is just as big a win for agents as it is for you. Instead of generating fifty lines of locking, caching and retry boilerplate — which you then get to review for subtle bugs — an agent chains a few calls that are hard to get wrong and, thanks to the fixed nesting order, impossible to compose incorrectly. The call site ends up documenting its own guarantees, so human and agent alike can tell at a glance what a call does in production. And when something misbehaves, the [debug helpers](#debugging) print straight to stdout — exactly where an agent is already looking.
+This is just as big a win for agents as it is for you. Instead of generating fifty lines of locking, caching and transaction boilerplate — which you then get to review for subtle bugs — an agent chains a few calls that are hard to get wrong and, thanks to the fixed nesting order, impossible to compose incorrectly. The call site ends up documenting its own guarantees, so human and agent alike can tell at a glance what a call does in production. And when something misbehaves, the [debug helpers](#debugging) print straight to stdout — exactly where an agent is already looking.
 
 This wrapper also has the support for eventing and inline actions. More on that below.
 
@@ -106,7 +105,7 @@ $payment = app(ChargeOrderAction::class)->handle($order);
 $payment = ChargeOrderAction::make()->handle($order);
 ```
 
-A bare `handle()` call is exactly that — a method call. And chaining a wrapper adds exactly that wrapper's behaviour, nothing else. Observability — the lifecycle events and log context — is its own explicit opt-in via [`observed()`](#lifecycle-events), so adding a retry or an idempotency key never changes what your logs or listeners see.
+A bare `handle()` call is exactly that — a method call. And chaining a wrapper adds exactly that wrapper's behaviour, nothing else. Observability — the lifecycle events and log context — is its own explicit opt-in via [`observed()`](#lifecycle-events), so adding a lock or an idempotency key never changes what your logs or listeners see.
 
 ### Conditional wrappers
 
@@ -147,7 +146,7 @@ Inline::handle(fn () => $user->sync());
 
 // with wrappers, chained exactly like a class-based action
 Inline::idempotent('sync:'.$user->id)
-    ->retry(3, backoff: 100)
+    ->withoutOverlapping('sync:'.$user->id)
     ->trace()
     ->handle(fn () => $user->sync());
 ```
@@ -165,18 +164,18 @@ Inline::events(['report.sent'])
     });
 ```
 
-Everything on the wrapper works: `retry()`, `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `circuitBreaker()`, `throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the typed `then()` entry point.
+Everything on the wrapper works: `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `once()`, `throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the typed `then()` entry point.
 
 Two things to know:
 
-- **Inline actions share one class** (`InlineAction`), so idempotency keys share one namespace, log context attributes every inline run as `Iak\Action\InlineAction`, and the wrappers that default their key to the action class — `circuitBreaker()`, `throttle()`, `withoutOverlapping()`, `memoize()` — require an explicit key (you get a clear exception otherwise, never a silently shared circuit breaker).
+- **Inline actions share one class** (`InlineAction`), so idempotency keys share one namespace, log context attributes every inline run as `Iak\Action\InlineAction`, and the wrappers that default their key to the action class — `throttle()`, `withoutOverlapping()`, `memoize()` — require an explicit key (you get a clear exception otherwise, never a silently shared throttle budget).
 - **Bare `Inline::handle()` is as silent as any unobserved run** — no lifecycle events, no log context. Start the chain from `Inline::observed()` when you want them, exactly like `observed()` on a class action.
 
 Inline actions don't get constructor injection, `#[EmitsEvents]` ancestor propagation or `Action::test()` mocking and instrumentation. The moment you want those, promote the closure to a real action class — its body moves into `handle()` unchanged.
 
 ## Debugging
 
-Every wrapper makes silent decisions — a retry sleeps, a circuit opens, an idempotency key answers from cache. And `handle()` itself does things you can't see from the call site: queries, log writes, memory spikes. The debug helpers make all of it visible right where you are, without touching the action.
+Every wrapper makes silent decisions — a lock is acquired, a throttle budget runs out, an idempotency key answers from cache. And `handle()` itself does things you can't see from the call site: queries, log writes, memory spikes. The debug helpers make all of it visible right where you are, without touching the action.
 
 They are built for humans and agents alike. Everything below prints straight to stdout — exactly where a coding agent is already looking — so an agent can debug and optimize your actions with the same loop you would use: chain a helper, run the action, read the output, fix the thing. More on that [below](#agents-can-debug-your-actions-too).
 
@@ -186,16 +185,15 @@ Chain `->dumpTrace()` on any call to print a timeline of every decision the wrap
 
 ```php
 SyncInventory::make()
-    ->retry(3, backoff: 400, jitter: true)
     ->idempotent("sku:{$sku->id}")
+    ->withoutOverlapping("sku:{$sku->id}")
     ->dumpTrace()
     ->handle($sku);
 
 // +0.0ms  started
-// +0.2ms  retry: attempt 1 failed (RuntimeException)
-// +0.3ms  retry: sleeping 231ms
-// +231.8ms  idempotency: result stored for 'sku-42'
-// +232.1ms  completed (232.1ms)
+// +0.3ms  lock: acquired for 'sku:42'
+// +12.1ms  idempotency: result stored for 'sku:42'
+// +12.4ms  completed (12.4ms)
 ```
 
 `->ddTrace()` does the same but stops the process right after the run, like `dd()`.
@@ -203,7 +201,7 @@ SyncInventory::make()
 When you want the trace programmatically instead of printed, chain `->trace()` and read it back with `lastTrace()`:
 
 ```php
-$pending = SyncInventory::make()->retry(3, backoff: 400, jitter: true)->idempotent($sku)->trace();
+$pending = SyncInventory::make()->idempotent("sku:{$sku->id}")->trace();
 
 $pending->handle($sku);
 
@@ -214,7 +212,7 @@ echo $pending->lastTrace()->summary();
 
 ```php
 SyncInventory::make()
-    ->retry(3)
+    ->withoutOverlapping("sku:{$sku->id}")
     ->trace(fn (Trace $trace) => Log::debug($trace->summary()))
     ->handle($sku);
 ```
@@ -262,14 +260,14 @@ SendInvoice::make()->observed()->handle($order);
 // [2026-07-07 12:00:00] production.INFO: invoice created {"action":"App\\Actions\\SendInvoice"}
 ```
 
-Nested actions attribute to the innermost running action, the previous value is restored afterwards (also when the run throws), and a pre-existing `action` context value survives. Wrapper chains without `observed()` — and bare `$action->handle()` calls — leave the context untouched: `observed()` is the one switch for attribution, so your log shape never changes as a side effect of adding a retry or a lock.
+Nested actions attribute to the innermost running action, the previous value is restored afterwards (also when the run throws), and a pre-existing `action` context value survives. Wrapper chains without `observed()` — and bare `$action->handle()` calls — leave the context untouched: `observed()` is the one switch for attribution, so your log shape never changes as a side effect of adding a throttle or a lock.
 
 ### Agents can debug your actions too
 
 An agent debugging your code has the same problem you do: it can't see inside a run. These helpers fix that for both of you — they print to stdout, the assertions fail with the offending SQL in the message, and nothing needs a debugger or an IDE. That makes actions unusually easy for an agent to debug *and* optimize on its own:
 
 - *"Why is `GenerateReport` slow?"* — the agent chains `->dumpQueries()` and `->dumpProfile()`, reads the output, spots the N+1, fixes it and guards it with `->assertNoDuplicateQueries()`.
-- *"Is the retry actually helping?"* — `->dumpTrace()` shows every attempt, sleep and decision on one timeline.
+- *"Why did this call answer from cache?"* — `->dumpTrace()` shows every wrapper decision on one timeline.
 - *"What would this backfill do?"* — `test()->dryRun()` executes it and rolls the database work back, so it can be rehearsed safely.
 
 > **Tip:** mention these helpers in your `CLAUDE.md` / `AGENTS.md`, and your agent will reach for them on its own instead of sprinkling `dump()` calls through your business logic.
@@ -494,37 +492,18 @@ $testable->handle($order);
 $testable->assertSkipped();
 ```
 
-### Retries, fallbacks and circuit breakers
+### Fallbacks
 
-The resilience helpers wrap `handle()` the same way `idempotent()` does, and they all return the same chainable wrapper:
+`fallback()` wraps `handle()` the same way `idempotent()` does and returns the same chainable wrapper:
 
 ```php
-// Re-run a flaky action: up to 3 total attempts, pausing 100ms then 500ms.
-SyncInventory::make()->retry(times: 3, backoff: [100, 500])->handle($warehouse);
-
-// Degrade gracefully when the action (still) fails.
+// Degrade gracefully when the action fails.
 $rate = FetchExchangeRate::make()
-    ->retry(times: 2)
     ->fallback(fn (Throwable $e) => ExchangeRate::lastKnown($currency))
     ->handle($currency);
-
-// Stop hammering a dependency that keeps failing.
-ChargeCustomer::make()
-    ->circuitBreaker('stripe', threshold: 5, cooldown: 60)
-    ->handle($order);
 ```
 
-**`retry(times: 3, backoff: 0, when: null)`** re-runs `handle()` when it throws, up to `times` total attempts. `backoff` is the pause between attempts in milliseconds: a fixed value, a per-attempt schedule (`[100, 500]` — the last entry repeats), or a closure receiving the attempt number and the exception. Sleeping goes through Laravel's `Sleep`, so tests control it with `Sleep::fake()`. By default every exception is retried except those implementing the `Iak\Action\Exceptions\NonRetryable` marker interface — implement it on your own exceptions to fail fast, or pass a `when:` closure to decide entirely yourself.
-
-When many processes retry against the same recovering dependency, fixed backoffs arrive in synchronized waves that knock it over again. `jitter: true` spreads them out by sleeping a random duration between zero and the scheduled backoff instead of the exact value:
-
-```php
-$action->retry(times: 4, backoff: [100, 400, 800], jitter: true)->handle($order);
-```
-
-**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action ultimately throws — including after exhausted retries or on an open circuit breaker. Rethrow from the closure to decline.
-
-**`circuitBreaker(key: null, threshold: 5, cooldown: 60, store: null)`** opens after `threshold` consecutive failures: further calls throw `CircuitOpenException` (with `availableIn()` seconds) without executing, giving the dependency `cooldown` seconds to recover before a single probe is let through. The breaker state is cache-backed and scoped to the action class by default — give the breakers of one shared dependency the same explicit key so they trip together across actions and processes.
+**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action throws — including when a wrapper nested inside it gives up, such as a held lock (`LockTimeoutException`), an exhausted throttle budget (`ThrottledException`) or a consumed `once()` key (`OnceConsumedException`). Rethrow from the closure to decline. The fallback value is never cached or memoized as a real result.
 
 ### Locks, throttles and transactions
 
@@ -541,7 +520,7 @@ TransferFunds::make()->transactional(attempts: 2)->handle($from, $to, $amount);
 
 **`withoutOverlapping(key: null, wait: 0, staleAfter: 60, store: null)`** is the mutex sibling of `idempotent()`: every call runs eventually, just never two at once per key. A held lock makes the call fail immediately — or after waiting up to `wait` seconds — with a `LockTimeoutException`. Nothing is cached. `staleAfter` caps how long a crashed holder can keep the lock. The lock *is* the feature, so a cache store without lock support is rejected loudly.
 
-**`throttle(key: null, allow: 60, every: 60)`** rate-limits executions per key. An exhausted budget throws `ThrottledException` (with `availableIn()` seconds) instead of blocking — composing `retry(backoff: ...)` around a throttled action is the supported way to wait a window out. Nested inside `retry()`, every attempt consumes budget: the throttle protects the dependency behind the action, not the caller.
+**`throttle(key: null, allow: 60, every: 60)`** rate-limits executions per key. An exhausted budget throws `ThrottledException` (with `availableIn()` seconds) instead of blocking, so the caller decides whether to wait the window out. Every execution consumes budget, failed ones included: the throttle protects the dependency behind the action, not the caller.
 
 **`transactional(attempts: 1, connection: null)`** runs `handle()` inside `DB::transaction()`, re-running it up to `attempts` times on a deadlock or serialization failure.
 
@@ -558,7 +537,7 @@ $permissions = ResolvePermissions::make()->memoize()->handle($user->id);
 
 Pass an explicit key when the arguments cannot be serialized, or when executing through `then()` (a closure has no argument list to derive a key from). Flush everything with `Action::flushMemoized()`.
 
-**`defer(fn (MyAction $a) => $a->handle(...))`** runs the action after the response has been sent, via Laravel's `defer()`. The whole configured wrapper chain runs at that point — an idempotency key, throttle budget or breaker state is consumed then, not now:
+**`defer(fn (MyAction $a) => $a->handle(...))`** runs the action after the response has been sent, via Laravel's `defer()`. The whole configured wrapper chain runs at that point — an idempotency key, once() key or throttle budget is consumed then, not now:
 
 ```php
 SendAnalytics::make()
@@ -582,17 +561,17 @@ Event::listen(function (ActionCompleted $event) {
 });
 ```
 
-The wrappers never dispatch these on their own — `retry()`, `idempotent()` and friends do exactly their job and stay silent, so adding one to a call changes nothing about what your listeners or logs see. Chain `observed()` next to any combination of wrappers to opt the call in. (A plain `$action->handle()` cannot emit them at all — the base `Action` does not wrap your `handle()`.)
+The wrappers never dispatch these on their own — `throttle()`, `idempotent()` and friends do exactly their job and stay silent, so adding one to a call changes nothing about what your listeners or logs see. Chain `observed()` next to any combination of wrappers to opt the call in. (A plain `$action->handle()` cannot emit them at all — the base `Action` does not wrap your `handle()`.)
 
 ### The nesting order is fixed
 
 Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
 
 ```
-fallback → memoize → idempotent → once → without overlapping → retry → circuit breaker → throttle → transaction → handle()
+fallback → memoize → idempotent → once → without overlapping → throttle → transaction → handle()
 ```
 
-Which reads as: failed attempts never consume an idempotency key (only the first success is cached), every retry attempt consults and feeds the circuit breaker and pays the throttle, an open circuit fails fast instead of being retried, every attempt gets a fresh transaction, and a fallback value is never cached or memoized as a real result.
+Which reads as: a failed run never consumes an idempotency or `once()` key (only the first success is cached), the throttle is only paid by runs that hold the overlap lock, the key is only consumed for work whose transaction committed, and a fallback value is never cached or memoized as a real result.
 
 ## Testing
 

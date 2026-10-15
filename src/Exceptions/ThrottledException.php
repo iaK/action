@@ -6,9 +6,8 @@ use RuntimeException;
 
 /**
  * Thrown instead of executing an action when its throttle() budget for the
- * current window is exhausted. Deliberately NOT NonRetryable: a throttle
- * window is short-lived, so composing retry() with a backoff around a
- * throttled action is a supported way to wait a window out.
+ * current window is exhausted. availableIn() tells the caller how long
+ * until the window resets, so it can decide whether to wait it out.
  */
 class ThrottledException extends RuntimeException
 {

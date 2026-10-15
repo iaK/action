@@ -1,7 +1,6 @@
 <?php
 
 use Iak\Action\Events\ActionCompleted;
-use Iak\Action\Exceptions\CircuitOpenException;
 use Iak\Action\Exceptions\ThrottledException;
 use Iak\Action\Execution\Trace;
 use Iak\Action\Execution\TraceEvent;
@@ -10,11 +9,9 @@ use Iak\Action\Tests\TestClasses\ClosureAction;
 use Iak\Action\Tests\TestClasses\SpyDumper;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Sleep;
 
 beforeEach(function () {
     Cache::flush();
-    Sleep::fake();
 });
 
 describe('trace()', function () {
@@ -105,31 +102,6 @@ describe('trace()', function () {
 });
 
 describe('middleware decisions', function () {
-    it('records failed attempts and sleeps for retry()', function () {
-        $attempts = 0;
-
-        $flaky = function () use (&$attempts) {
-            $attempts++;
-
-            if ($attempts < 3) {
-                throw new RuntimeException('flaky');
-            }
-
-            return 'done';
-        };
-
-        $pending = ClosureAction::make()->retry(times: 3, backoff: 100)->trace();
-        $pending->handle($flaky);
-
-        $trace = $pending->lastTrace();
-
-        expect($trace->count(TraceEvent::RetryAttempt))->toBe(2);
-        expect($trace->first(TraceEvent::RetryAttempt)?->context)
-            ->toBe(['attempt' => 1, 'exception' => RuntimeException::class]);
-        expect($trace->count(TraceEvent::RetrySlept))->toBe(2);
-        expect($trace->first(TraceEvent::RetrySlept)?->context['milliseconds'])->toBe(100);
-    });
-
     it('records stored and hit idempotency decisions', function () {
         $first = ClosureAction::make()->idempotent('trace-idem')->trace();
         $first->handle(fn (): string => 'v');
@@ -205,22 +177,6 @@ describe('middleware decisions', function () {
 
         expect($pending->lastTrace()?->has(TraceEvent::Throttled))->toBeTrue();
         expect($pending->lastTrace()?->has(TraceEvent::Failed))->toBeTrue();
-    });
-
-    it('records the breaker tripping and later open rejections', function () {
-        $down = function (): void {
-            throw new RuntimeException('down');
-        };
-
-        $tripping = ClosureAction::make()->circuitBreaker('trace-breaker', threshold: 1)->trace();
-
-        expect(fn () => $tripping->handle($down))->toThrow(RuntimeException::class, 'down');
-        expect($tripping->lastTrace()?->first(TraceEvent::CircuitTripped)?->context['failures'])->toBe(1);
-
-        $rejected = ClosureAction::make()->circuitBreaker('trace-breaker', threshold: 1)->trace();
-
-        expect(fn () => $rejected->handle(fn (): string => 'x'))->toThrow(CircuitOpenException::class);
-        expect($rejected->lastTrace()?->has(TraceEvent::CircuitOpenRejected))->toBeTrue();
     });
 
     it('records transaction commits and concurrency retries', function () {

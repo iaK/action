@@ -162,35 +162,6 @@ abstract class Action
     }
 
     /**
-     * Re-run handle() when it throws, up to $times total attempts, sleeping
-     * the given backoff (milliseconds) between attempts. See
-     * PendingAction::retry() for the backoff shapes and the NonRetryable
-     * default of the $when filter.
-     *
-     * @param  (\Closure(int, \Throwable): int)|int|array<int, int>  $backoff
-     * @param  (\Closure(\Throwable): bool)|null  $when
-     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value, so many processes retrying together spread out instead of arriving in synchronized waves.
-     * @return PendingAction<static>
-     */
-    public function retry(int $times = 3, \Closure|int|array $backoff = 0, ?\Closure $when = null, bool $jitter = false): PendingAction
-    {
-        return (new PendingAction($this))->retry($times, $backoff, $when, $jitter);
-    }
-
-    /**
-     * Fail fast while a dependency is broken: after $threshold consecutive
-     * failures handle() throws CircuitOpenException without executing until
-     * the cooldown has passed. See PendingAction::circuitBreaker() for the
-     * key scoping and how it composes with retry().
-     *
-     * @return PendingAction<static>
-     */
-    public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): PendingAction
-    {
-        return (new PendingAction($this))->circuitBreaker($key, $threshold, $cooldown, $store);
-    }
-
-    /**
      * Remember the first successful result per key for the rest of the
      * process and return it without executing on later calls. See
      * PendingAction::memoize() for the key derivation and then() caveat.
@@ -286,7 +257,7 @@ abstract class Action
     /**
      * Rate-limit executions to $allow per $every seconds per key, throwing
      * ThrottledException once the budget is exhausted. See
-     * PendingAction::throttle() for how it composes with retry().
+     * PendingAction::throttle() for the key and budget semantics.
      *
      * @return PendingAction<static>
      */

@@ -132,40 +132,18 @@ describe('inline wrappers', function () {
         expect($count)->toBe(2);
     });
 
-    it('retry() re-runs a throwing closure', function () {
-        $attempts = 0;
-        $flaky = function () use (&$attempts) {
-            $attempts++;
-
-            if ($attempts < 3) {
-                throw new RuntimeException('flaky');
-            }
-
-            return 'recovered';
-        };
-
-        expect(Inline::retry(3)->handle($flaky))->toBe('recovered');
-        expect($attempts)->toBe(3);
-    });
-
-    it('fallback() rescues and composes with retry()', function () {
-        $attempts = 0;
-        $failing = function () use (&$attempts): void {
-            $attempts++;
-
+    it('fallback() rescues a throwing closure', function () {
+        $failing = function (): void {
             throw new RuntimeException('down');
         };
 
-        $result = Inline::fallback(fn (Throwable $e) => 'degraded')
-            ->retry(2)
+        $result = Inline::fallback(fn (Throwable $e) => 'degraded: '.$e->getMessage())
             ->handle($failing);
 
-        expect($result)->toBe('degraded');
-        expect($attempts)->toBe(2);
+        expect($result)->toBe('degraded: down');
     });
 
     it('runs the keyed concurrency wrappers end to end', function () {
-        expect(Inline::circuitBreaker('inline-cb')->handle(fn () => 'ok'))->toBe('ok');
         expect(Inline::throttle('inline-throttle')->handle(fn () => 'ok'))->toBe('ok');
         expect(Inline::withoutOverlapping('inline-lock')->handle(fn () => 'ok'))->toBe('ok');
     });
@@ -194,14 +172,14 @@ describe('inline wrappers', function () {
 
 describe('inline keyless guards', function () {
     it('rejects keyless class-scoped wrappers chained onto an inline action', function (string $method) {
-        expect(fn () => Inline::retry()->{$method}())
+        expect(fn () => Inline::fallback(fn (Throwable $e) => null)->{$method}())
             ->toThrow(InvalidArgumentException::class, 'explicit key');
-    })->with(['circuitBreaker', 'throttle', 'withoutOverlapping', 'memoize']);
+    })->with(['throttle', 'withoutOverlapping', 'memoize']);
 
     it('accepts the same wrappers with an explicit key', function () {
-        $result = Inline::retry()
-            ->circuitBreaker('guarded-cb')
+        $result = Inline::fallback(fn (Throwable $e) => null)
             ->throttle('guarded-throttle')
+            ->withoutOverlapping('guarded-lock')
             ->handle(fn () => 'ok');
 
         expect($result)->toBe('ok');
@@ -210,7 +188,6 @@ describe('inline keyless guards', function () {
     it('keeps the class-derived default key for class-based actions', function () {
         $closure = fn () => 'ok';
 
-        expect(ClosureAction::make()->circuitBreaker()->handle($closure))->toBe('ok');
         expect(ClosureAction::make()->throttle()->handle($closure))->toBe('ok');
         expect(ClosureAction::make()->withoutOverlapping()->handle($closure))->toBe('ok');
     });

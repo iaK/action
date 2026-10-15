@@ -51,14 +51,14 @@ describe('lifecycle events', function () {
     });
 
     it('stays silent for wrapper features without observed()', function () {
-        ClosureAction::make()->retry(times: 2)->handle(fn () => 'done');
+        ClosureAction::make()->throttle(allow: 2)->handle(fn () => 'done');
 
         Event::assertNotDispatched(ActionStarted::class);
         Event::assertNotDispatched(ActionCompleted::class);
     });
 
     it('fires alongside any wrapper feature once observed() is chained', function () {
-        ClosureAction::make()->retry(times: 2)->observed()->handle(fn () => 'done');
+        ClosureAction::make()->throttle(allow: 2)->observed()->handle(fn () => 'done');
 
         Event::assertDispatched(ActionStarted::class);
         Event::assertDispatched(ActionCompleted::class);

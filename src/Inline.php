@@ -11,13 +11,13 @@ use UnitEnum;
 
 /**
  * Entry points for inline actions: run a closure through the execution
- * pipeline — idempotency, retries, tracing, lifecycle events, log context —
+ * pipeline — idempotency, throttling, tracing, lifecycle events, log context —
  * without declaring an action class. Every configuring static opens a
  * PendingAction around a fresh InlineAction, so the wrappers chain exactly
  * like they do on class-based actions:
  *
  *     Inline::idempotent('sync:'.$user->id)
- *         ->retry(3, backoff: 100)
+ *         ->throttle('sync', allow: 10, every: 60)
  *         ->handle(fn () => $user->sync());
  *
  * The closure receives the InlineAction as its argument. Inline actions do
@@ -115,33 +115,6 @@ final class Inline
     public static function fallback(Closure $fallback): PendingAction
     {
         return (new PendingAction(new InlineAction))->fallback($fallback);
-    }
-
-    /**
-     * Re-run the closure when it throws, up to $times total attempts.
-     * See PendingAction::retry().
-     *
-     * @param  (Closure(int, \Throwable): int)|int|array<int, int>  $backoff
-     * @param  (Closure(\Throwable): bool)|null  $when
-     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value.
-     * @return PendingAction<InlineAction>
-     */
-    public static function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null, bool $jitter = false): PendingAction
-    {
-        return (new PendingAction(new InlineAction))->retry($times, $backoff, $when, $jitter);
-    }
-
-    /**
-     * Fail fast while a dependency is broken. The key is required: inline
-     * actions share one class, so the class-derived default would give every
-     * inline action in the app the same breaker. See
-     * PendingAction::circuitBreaker().
-     *
-     * @return PendingAction<InlineAction>
-     */
-    public static function circuitBreaker(string $key, int $threshold = 5, int $cooldown = 60, ?string $store = null): PendingAction
-    {
-        return (new PendingAction(new InlineAction))->circuitBreaker($key, $threshold, $cooldown, $store);
     }
 
     /**
