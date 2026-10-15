@@ -27,7 +27,7 @@ trait HandlesEvents
 
         $this->throwIfEventNotAllowed($event, "Cannot listen for event '{$event}'.");
 
-        Event::listen($this->generateEventName($event), $callback);
+        Event::listen($this->generateEventName($event), $callback(...));
 
         return $this;
     }
