@@ -7,8 +7,8 @@ use Iak\Action\Execution\Trace;
 use Throwable;
 
 /**
- * Dispatched when an observed() invocation throws (after retries and
- * every other configured layer had their say — a rescued run dispatches
+ * Dispatched when an observed() invocation throws (after every configured
+ * layer had its say — a rescued run dispatches
  * ActionCompleted with the fallback value instead). The exception is
  * rethrown to the caller after this event.
  * $trace is the execution trace when tracing was enabled for the invocation,

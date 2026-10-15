@@ -1,7 +1,6 @@
 <?php
 
 use Iak\Action\Events\ActionCompleted;
-use Iak\Action\Exceptions\ThrottledException;
 use Iak\Action\Execution\Trace;
 use Iak\Action\Execution\TraceEvent;
 use Iak\Action\Support\Dumper;
@@ -157,26 +156,6 @@ describe('middleware decisions', function () {
 
         $pending->handle(fn (): string => 'x');
         expect($pending->lastTrace()?->has(TraceEvent::MemoizeHit))->toBeTrue();
-    });
-
-    it('records the acquired overlap lock', function () {
-        $pending = ClosureAction::make()->withoutOverlapping('trace-lock')->trace();
-
-        $pending->handle(fn (): string => 'x');
-
-        expect($pending->lastTrace()?->first(TraceEvent::LockAcquired)?->context['key'])->toBe('trace-lock');
-    });
-
-    it('records a throttled rejection', function () {
-        ClosureAction::make()->throttle('trace-throttle', allow: 1)->handle(fn (): string => 'first');
-
-        $pending = ClosureAction::make()->throttle('trace-throttle', allow: 1)->trace();
-
-        expect(fn () => $pending->handle(fn (): string => 'second'))
-            ->toThrow(ThrottledException::class);
-
-        expect($pending->lastTrace()?->has(TraceEvent::Throttled))->toBeTrue();
-        expect($pending->lastTrace()?->has(TraceEvent::Failed))->toBeTrue();
     });
 
     it('records transaction commits and concurrency retries', function () {

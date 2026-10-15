@@ -32,7 +32,7 @@ describe('Trace', function () {
         ]);
 
         expect($trace->has(TraceEvent::TransactionRetried))->toBeTrue();
-        expect($trace->has(TraceEvent::Throttled))->toBeFalse();
+        expect($trace->has(TraceEvent::FallbackUsed))->toBeFalse();
         expect($trace->count(TraceEvent::TransactionRetried))->toBe(2);
         expect($trace->first(TraceEvent::TransactionRetried)?->context['attempt'])->toBe(1);
         expect($trace->durationMs())->toBe(3.0);
@@ -42,7 +42,7 @@ describe('Trace', function () {
     it('renders a one-line-per-entry summary and stringifies to it', function () {
         $trace = new Trace([
             new TraceEntry('action', TraceEvent::Started, 0.0),
-            new TraceEntry('throttle', TraceEvent::Throttled, 1.2, ['available_in' => 30]),
+            new TraceEntry('transactional', TraceEvent::TransactionRetried, 1.2, ['attempt' => 1, 'exception' => 'E']),
             new TraceEntry('action', TraceEvent::Completed, 2.4, ['duration_ms' => 2.4]),
         ]);
 
@@ -51,7 +51,7 @@ describe('Trace', function () {
         expect($summary)
             ->toContain('+0.0ms')
             ->toContain('started')
-            ->toContain('throttle: budget exhausted (available in 30s)')
+            ->toContain('transaction: attempt 1 after a concurrency error')
             ->toContain('completed (2.4ms)');
         expect((string) $trace)->toBe($summary);
     });

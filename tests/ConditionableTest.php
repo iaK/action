@@ -52,7 +52,7 @@ describe('when() / unless()', function () {
         $result = ClosureAction::make()->observed()
             ->when(
                 false,
-                fn (PendingAction $pending): PendingAction => $pending->throttle('conditional-throttle', allow: 1),
+                fn (PendingAction $pending): PendingAction => $pending->memoize('conditional-memo'),
                 fn (PendingAction $pending): PendingAction => $pending->fallback(fn (Throwable $e): string => 'rescued'),
             )
             ->handle($throwing);

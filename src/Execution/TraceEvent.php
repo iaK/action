@@ -21,8 +21,6 @@ enum TraceEvent: string
     case IdempotencyStored = 'idempotency_stored';
     case OnceHit = 'once_hit';
     case OnceStored = 'once_stored';
-    case LockAcquired = 'lock_acquired';
-    case Throttled = 'throttled';
     case TransactionCommitted = 'transaction_committed';
     case TransactionRetried = 'transaction_retried';
 
@@ -45,8 +43,6 @@ enum TraceEvent: string
             self::IdempotencyStored => sprintf("idempotency: result stored for '%s'", (string) ($context['key'] ?? '?')),
             self::OnceHit => sprintf("once: skipped, '%s' is already consumed", (string) ($context['key'] ?? '?')),
             self::OnceStored => sprintf("once: consumed '%s'", (string) ($context['key'] ?? '?')),
-            self::LockAcquired => sprintf("lock: acquired for '%s'", (string) ($context['key'] ?? '?')),
-            self::Throttled => sprintf('throttle: budget exhausted (available in %ss)', (string) ($context['available_in'] ?? '?')),
             self::TransactionCommitted => 'transaction: committed',
             self::TransactionRetried => sprintf('transaction: attempt %s after a concurrency error', (string) ($context['attempt'] ?? '?')),
         };

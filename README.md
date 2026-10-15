@@ -124,12 +124,12 @@ SendWelcomeGift::make()
     ->when(fn () => $user->isActivated(), fn (SendWelcomeGift $action) => $action->handle($user));
 ```
 
-The same trick works for conditioning a single wrapper instead of the whole call — rate-limit the free plan, let paying customers run straight through:
+The same trick works for conditioning a single wrapper instead of the whole call — deduplicate when the client sent an idempotency key, let every other call run straight through:
 
 ```php
-ExportReport::make()
-    ->when(fn () => $user->onFreePlan(), fn (ExportReport $action) => $action->throttle("export:{$user->id}", allow: 3, every: 3600))
-    ->handle($user);
+ChargeOrder::make()
+    ->when($request->hasHeader('Idempotency-Key'), fn (ChargeOrder $action) => $action->idempotent($request->header('Idempotency-Key')))
+    ->handle($order);
 ```
 
 The condition can be a plain value or a closure, and `unless()` is the inverse. When the condition is false, the last call above is a plain bare `handle()` — which is fine, since a wrapper only ever adds its own behaviour. Observability is a separate opt-in via [`observed()`](#lifecycle-events) either way, and it chains fine after a `when()`.
@@ -146,7 +146,7 @@ Inline::handle(fn () => $user->sync());
 
 // with wrappers, chained exactly like a class-based action
 Inline::idempotent('sync:'.$user->id)
-    ->withoutOverlapping('sync:'.$user->id)
+    ->transactional()
     ->trace()
     ->handle(fn () => $user->sync());
 ```
@@ -164,18 +164,18 @@ Inline::events(['report.sent'])
     });
 ```
 
-Everything on the wrapper works: `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `once()`, `throttle()`, `withoutOverlapping()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the typed `then()` entry point.
+Everything on the wrapper works: `fallback()`, `idempotent()` (bust with `Inline::forgetIdempotency($key)`), `once()`, `memoize()`, `transactional()`, `trace()`/`dumpTrace()`/`ddTrace()`, `wasExecuted()`, `when()`/`unless()`, `defer()` and the typed `then()` entry point.
 
 Two things to know:
 
-- **Inline actions share one class** (`InlineAction`), so idempotency keys share one namespace, log context attributes every inline run as `Iak\Action\InlineAction`, and the wrappers that default their key to the action class — `throttle()`, `withoutOverlapping()`, `memoize()` — require an explicit key (you get a clear exception otherwise, never a silently shared throttle budget).
+- **Inline actions share one class** (`InlineAction`), so idempotency keys share one namespace, log context attributes every inline run as `Iak\Action\InlineAction`, and `memoize()` requires an explicit key (you get a clear exception otherwise, never a silently shared memo entry).
 - **Bare `Inline::handle()` is as silent as any unobserved run** — no lifecycle events, no log context. Start the chain from `Inline::observed()` when you want them, exactly like `observed()` on a class action.
 
 Inline actions don't get constructor injection, `#[EmitsEvents]` ancestor propagation or `Action::test()` mocking and instrumentation. The moment you want those, promote the closure to a real action class — its body moves into `handle()` unchanged.
 
 ## Debugging
 
-Every wrapper makes silent decisions — a lock is acquired, a throttle budget runs out, an idempotency key answers from cache. And `handle()` itself does things you can't see from the call site: queries, log writes, memory spikes. The debug helpers make all of it visible right where you are, without touching the action.
+Every wrapper makes silent decisions — an idempotency key answers from cache, a `once()` key is already consumed, a transaction is retried after a deadlock. And `handle()` itself does things you can't see from the call site: queries, log writes, memory spikes. The debug helpers make all of it visible right where you are, without touching the action.
 
 They are built for humans and agents alike. Everything below prints straight to stdout — exactly where a coding agent is already looking — so an agent can debug and optimize your actions with the same loop you would use: chain a helper, run the action, read the output, fix the thing. More on that [below](#agents-can-debug-your-actions-too).
 
@@ -186,12 +186,12 @@ Chain `->dumpTrace()` on any call to print a timeline of every decision the wrap
 ```php
 SyncInventory::make()
     ->idempotent("sku:{$sku->id}")
-    ->withoutOverlapping("sku:{$sku->id}")
+    ->transactional()
     ->dumpTrace()
     ->handle($sku);
 
 // +0.0ms  started
-// +0.3ms  lock: acquired for 'sku:42'
+// +11.9ms  transaction: committed
 // +12.1ms  idempotency: result stored for 'sku:42'
 // +12.4ms  completed (12.4ms)
 ```
@@ -212,7 +212,7 @@ echo $pending->lastTrace()->summary();
 
 ```php
 SyncInventory::make()
-    ->withoutOverlapping("sku:{$sku->id}")
+    ->transactional()
     ->trace(fn (Trace $trace) => Log::debug($trace->summary()))
     ->handle($sku);
 ```
@@ -260,7 +260,7 @@ SendInvoice::make()->observed()->handle($order);
 // [2026-07-07 12:00:00] production.INFO: invoice created {"action":"App\\Actions\\SendInvoice"}
 ```
 
-Nested actions attribute to the innermost running action, the previous value is restored afterwards (also when the run throws), and a pre-existing `action` context value survives. Wrapper chains without `observed()` — and bare `$action->handle()` calls — leave the context untouched: `observed()` is the one switch for attribution, so your log shape never changes as a side effect of adding a throttle or a lock.
+Nested actions attribute to the innermost running action, the previous value is restored afterwards (also when the run throws), and a pre-existing `action` context value survives. Wrapper chains without `observed()` — and bare `$action->handle()` calls — leave the context untouched: `observed()` is the one switch for attribution, so your log shape never changes as a side effect of adding a transaction or an idempotency key.
 
 ### Agents can debug your actions too
 
@@ -503,24 +503,14 @@ $rate = FetchExchangeRate::make()
     ->handle($currency);
 ```
 
-**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action throws — including when a wrapper nested inside it gives up, such as a held lock (`LockTimeoutException`), an exhausted throttle budget (`ThrottledException`) or a consumed `once()` key (`OnceConsumedException`). Rethrow from the closure to decline. The fallback value is never cached or memoized as a real result.
+**`fallback(fn (Throwable $e) => $value)`** answers with a fallback value when the action throws — including when a wrapper nested inside it gives up, such as a consumed `once()` key (`OnceConsumedException`). Rethrow from the closure to decline. The fallback value is never cached or memoized as a real result.
 
-### Locks, throttles and transactions
+### Transactions
 
 ```php
-// Never two report generations at once — wait up to 5s for a running one.
-GenerateReport::make()->withoutOverlapping("report:{$team->id}", wait: 5)->handle($team);
-
-// At most 10 calls per minute against the mail provider.
-SendNewsletter::make()->throttle('mailgun', allow: 10, every: 60)->handle($batch);
-
 // All or nothing, with two shots at a deadlock.
 TransferFunds::make()->transactional(attempts: 2)->handle($from, $to, $amount);
 ```
-
-**`withoutOverlapping(key: null, wait: 0, staleAfter: 60, store: null)`** is the mutex sibling of `idempotent()`: every call runs eventually, just never two at once per key. A held lock makes the call fail immediately — or after waiting up to `wait` seconds — with a `LockTimeoutException`. Nothing is cached. `staleAfter` caps how long a crashed holder can keep the lock. The lock *is* the feature, so a cache store without lock support is rejected loudly.
-
-**`throttle(key: null, allow: 60, every: 60)`** rate-limits executions per key. An exhausted budget throws `ThrottledException` (with `availableIn()` seconds) instead of blocking, so the caller decides whether to wait the window out. Every execution consumes budget, failed ones included: the throttle protects the dependency behind the action, not the caller.
 
 **`transactional(attempts: 1, connection: null)`** runs `handle()` inside `DB::transaction()`, re-running it up to `attempts` times on a deadlock or serialization failure.
 
@@ -537,7 +527,7 @@ $permissions = ResolvePermissions::make()->memoize()->handle($user->id);
 
 Pass an explicit key when the arguments cannot be serialized, or when executing through `then()` (a closure has no argument list to derive a key from). Flush everything with `Action::flushMemoized()`.
 
-**`defer(fn (MyAction $a) => $a->handle(...))`** runs the action after the response has been sent, via Laravel's `defer()`. The whole configured wrapper chain runs at that point — an idempotency key, once() key or throttle budget is consumed then, not now:
+**`defer(fn (MyAction $a) => $a->handle(...))`** runs the action after the response has been sent, via Laravel's `defer()`. The whole configured wrapper chain runs at that point — an idempotency or once() key is consumed then, not now:
 
 ```php
 SendAnalytics::make()
@@ -561,17 +551,17 @@ Event::listen(function (ActionCompleted $event) {
 });
 ```
 
-The wrappers never dispatch these on their own — `throttle()`, `idempotent()` and friends do exactly their job and stay silent, so adding one to a call changes nothing about what your listeners or logs see. Chain `observed()` next to any combination of wrappers to opt the call in. (A plain `$action->handle()` cannot emit them at all — the base `Action` does not wrap your `handle()`.)
+The wrappers never dispatch these on their own — `idempotent()`, `transactional()` and friends do exactly their job and stay silent, so adding one to a call changes nothing about what your listeners or logs see. Chain `observed()` next to any combination of wrappers to opt the call in. (A plain `$action->handle()` cannot emit them at all — the base `Action` does not wrap your `handle()`.)
 
 ### The nesting order is fixed
 
 Chaining order never changes the semantics. The wrapper always nests the concerns in one documented order:
 
 ```
-fallback → memoize → idempotent → once → without overlapping → throttle → transaction → handle()
+fallback → memoize → idempotent → once → transaction → handle()
 ```
 
-Which reads as: a failed run never consumes an idempotency or `once()` key (only the first success is cached), the throttle is only paid by runs that hold the overlap lock, the key is only consumed for work whose transaction committed, and a fallback value is never cached or memoized as a real result.
+Which reads as: a failed run never consumes an idempotency or `once()` key (only the first success is cached), the key is only consumed for work whose transaction committed, and a fallback value is never cached or memoized as a real result.
 
 ## Testing
 
