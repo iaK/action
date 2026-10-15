@@ -2,16 +2,16 @@
 
 All notable changes to `laravel-action` will be documented in this file.
 
+## 3.0.0 - 2026-10-15
+
+Slimmer core: retry(), circuitBreaker(), throttle() and withoutOverlapping() removed; run() renamed to then(); consumed once() keys route through fallback().
+
 **Breaking changes**
 
 - The `retry()` and `circuitBreaker()` execution wrappers were removed — from `Action`, `PendingAction` and `Inline` — together with `CircuitOpenException`, the `NonRetryable` marker interface and the `RetryAttempt`/`RetrySlept`/`CircuitOpenRejected`/`CircuitProbeAllowed`/`CircuitTripped` trace events. `fallback()` is unchanged, and `transactional($attempts)` still re-runs on deadlocks. `OnceConsumedException` no longer implements `NonRetryable`.
 - The `throttle()` and `withoutOverlapping()` execution wrappers were removed — from `Action`, `PendingAction` and `Inline` — together with `ThrottledException` and the `Throttled`/`LockAcquired` trace events. The nesting order is now fallback → memoize → idempotent → once → transaction → handle().
 - `PendingAction::run()` and `Testable::run()` were renamed to `then()`. Behavior is unchanged: the closure receives the wrapped action with full typing, the invocation runs through the whole configured chain (a cached `idempotent()` hit still returns without the closure executing), and the closure's result is returned. The old name suggested the method itself executed the action and said nothing about the pass-through; `then()` follows `Pipeline::then()`, which runs the pipes with the given closure as the innermost destination. There is no `run()` alias — replace `->run(fn (MyAction $a) => ...)` with `->then(fn (MyAction $a) => ...)`. The `memoize()` missing-key exception message names `then()` accordingly.
 - A consumed `once()` key now routes through a chained `fallback()`: the fallback closure receives a new `OnceConsumedException` (carrying `key()`) and its value becomes the result — previously the skip answered `null` even with a fallback chained. Rethrow from the fallback to decline and the exception reaches the caller. Chains without a `fallback()` are unchanged: a skip still answers `null`. `once()` + `fallback()` now guarantees a result, which the PHPStan rules shipped in this release can verify statically.
-
-## 3.0.0 - 2026-10-15
-
-Slimmer core: retry(), circuitBreaker(), throttle() and withoutOverlapping() removed; run() renamed to then(); once() + make:action.
 
 ## 2.0.0 - 2026-07-18
 
