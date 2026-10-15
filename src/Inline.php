@@ -11,13 +11,13 @@ use UnitEnum;
 
 /**
  * Entry points for inline actions: run a closure through the execution
- * pipeline — idempotency, throttling, tracing, lifecycle events, log context —
+ * pipeline — idempotency, memoization, tracing, lifecycle events, log context —
  * without declaring an action class. Every configuring static opens a
  * PendingAction around a fresh InlineAction, so the wrappers chain exactly
  * like they do on class-based actions:
  *
  *     Inline::idempotent('sync:'.$user->id)
- *         ->throttle('sync', allow: 10, every: 60)
+ *         ->transactional()
  *         ->handle(fn () => $user->sync());
  *
  * The closure receives the InlineAction as its argument. Inline actions do
@@ -115,31 +115,6 @@ final class Inline
     public static function fallback(Closure $fallback): PendingAction
     {
         return (new PendingAction(new InlineAction))->fallback($fallback);
-    }
-
-    /**
-     * Rate-limit executions per key. The key is required: inline actions
-     * share one class, so the class-derived default would pool every inline
-     * action into one budget. See PendingAction::throttle().
-     *
-     * @return PendingAction<InlineAction>
-     */
-    public static function throttle(string $key, int $allow = 60, int $every = 60): PendingAction
-    {
-        return (new PendingAction(new InlineAction))->throttle($key, $allow, $every);
-    }
-
-    /**
-     * Never run two overlapping executions per key. The key is required:
-     * inline actions share one class, so the class-derived default would
-     * serialize unrelated inline actions behind one mutex. See
-     * PendingAction::withoutOverlapping().
-     *
-     * @return PendingAction<InlineAction>
-     */
-    public static function withoutOverlapping(string $key, int $wait = 0, int $staleAfter = 60, ?string $store = null): PendingAction
-    {
-        return (new PendingAction(new InlineAction))->withoutOverlapping($key, $wait, $staleAfter, $store);
     }
 
     /**

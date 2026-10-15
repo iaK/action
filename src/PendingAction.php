@@ -14,12 +14,10 @@ use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Once;
-use Iak\Action\Execution\Throttle;
 use Iak\Action\Execution\Trace;
 use Iak\Action\Execution\TraceEvent;
 use Iak\Action\Execution\TraceRecorder;
 use Iak\Action\Execution\Transactional;
-use Iak\Action\Execution\WithoutOverlapping;
 use Iak\Action\Support\Dumper;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Traits\Conditionable;
@@ -62,8 +60,6 @@ class PendingAction
         'memoize',
         'idempotent',
         'once',
-        'withoutOverlapping',
-        'throttle',
         'transactional',
     ];
 
@@ -141,11 +137,10 @@ class PendingAction
 
     /**
      * Answer with the closure's value when handle() cannot produce a real
-     * result — whatever the reason: the action threw, a lock could not be
-     * acquired, the throttle budget ran out, or a consumed once() key (which
-     * arrives as an OnceConsumedException). The closure receives the Throwable and may
-     * rethrow to decline. The fallback value is never cached as an
-     * idempotent result.
+     * result — whatever the reason: the action threw or a consumed once() key
+     * (which arrives as an OnceConsumedException). The closure receives the
+     * Throwable and may rethrow to decline. The fallback value is never cached
+     * as an idempotent result.
      *
      * @param  Closure(Throwable): mixed  $fallback
      * @return $this
@@ -179,7 +174,7 @@ class PendingAction
      * Opt this run into the observability envelope: the ActionStarted /
      * ActionCompleted / ActionFailed lifecycle events and the log-context
      * attribution. Nothing dispatches them implicitly — the wrapper
-     * features do exactly their own job — so adding a throttle() or an
+     * features do exactly their own job — so adding a transactional() or an
      * idempotency key never changes what your logs or listeners see.
      *
      * @return $this
@@ -291,43 +286,6 @@ class PendingAction
     public function defer(Closure $callback): void
     {
         defer(fn (): mixed => $this->then($callback));
-    }
-
-    /**
-     * Never run two overlapping executions per key: a held lock means this
-     * call waits up to $wait seconds (zero fails immediately) and then throws
-     * a LockTimeoutException. Unlike idempotent(), nothing is cached — every
-     * call runs eventually, just never two at once. $staleAfter caps how long
-     * a crashed holder can keep the lock. The key defaults to the action
-     * class. Requires a lock-capable cache store and fails loudly otherwise.
-     *
-     * @return $this
-     */
-    public function withoutOverlapping(?string $key = null, int $wait = 0, int $staleAfter = 60, ?string $store = null): static
-    {
-        $this->guardInlineKey('withoutOverlapping', $key);
-        $this->middleware['withoutOverlapping'] = new WithoutOverlapping(
-            $key ?? $this->action::class, $wait, $staleAfter, $store
-        );
-
-        return $this;
-    }
-
-    /**
-     * Rate-limit executions to $allow per $every seconds per key (defaulting
-     * to the action class). An exhausted budget throws ThrottledException —
-     * carrying availableIn() — instead of blocking, so the caller decides
-     * whether to wait the window out. Every execution attempt consumes
-     * budget: the throttle protects the dependency, not the caller.
-     *
-     * @return $this
-     */
-    public function throttle(?string $key = null, int $allow = 60, int $every = 60): static
-    {
-        $this->guardInlineKey('throttle', $key);
-        $this->middleware['throttle'] = new Throttle($key ?? $this->action::class, $allow, $every);
-
-        return $this;
     }
 
     /**
@@ -568,10 +526,9 @@ class PendingAction
 
     /**
      * Inline actions all share one class, so a class-derived default key
-     * would make unrelated inline actions share a throttle budget, mutex or
-     * memo entry — one inline action exhausting its budget would throttle
-     * every other one. Fail loudly at configuration time
-     * instead of silently cross-talking at run time.
+     * would make unrelated inline actions share one memo entry — one inline
+     * action's memoized result would answer for every other one. Fail loudly
+     * at configuration time instead of silently cross-talking at run time.
      */
     protected function guardInlineKey(string $method, ?string $key): void
     {

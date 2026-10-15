@@ -8,6 +8,7 @@ use Iak\Action\Inline;
 use Iak\Action\InlineAction;
 use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
+use Iak\Action\Tests\TestClasses\CountingAction;
 use Iak\Action\Tests\TestClasses\OrderEvent;
 use Illuminate\Support\Defer\DeferredCallbackCollection;
 use Illuminate\Support\Facades\Cache;
@@ -143,11 +144,6 @@ describe('inline wrappers', function () {
         expect($result)->toBe('degraded: down');
     });
 
-    it('runs the keyed concurrency wrappers end to end', function () {
-        expect(Inline::throttle('inline-throttle')->handle(fn () => 'ok'))->toBe('ok');
-        expect(Inline::withoutOverlapping('inline-lock')->handle(fn () => 'ok'))->toBe('ok');
-    });
-
     it('memoize() remembers per process under its required key', function () {
         $count = 0;
         $closure = function () use (&$count) {
@@ -171,25 +167,21 @@ describe('inline wrappers', function () {
 });
 
 describe('inline keyless guards', function () {
-    it('rejects keyless class-scoped wrappers chained onto an inline action', function (string $method) {
-        expect(fn () => Inline::fallback(fn (Throwable $e) => null)->{$method}())
+    it('rejects a keyless memoize() chained onto an inline action', function () {
+        expect(fn () => Inline::fallback(fn (Throwable $e) => null)->memoize())
             ->toThrow(InvalidArgumentException::class, 'explicit key');
-    })->with(['throttle', 'withoutOverlapping', 'memoize']);
+    });
 
-    it('accepts the same wrappers with an explicit key', function () {
+    it('accepts memoize() with an explicit key', function () {
         $result = Inline::fallback(fn (Throwable $e) => null)
-            ->throttle('guarded-throttle')
-            ->withoutOverlapping('guarded-lock')
+            ->memoize('guarded-memo')
             ->handle(fn () => 'ok');
 
         expect($result)->toBe('ok');
     });
 
-    it('keeps the class-derived default key for class-based actions', function () {
-        $closure = fn () => 'ok';
-
-        expect(ClosureAction::make()->throttle()->handle($closure))->toBe('ok');
-        expect(ClosureAction::make()->withoutOverlapping()->handle($closure))->toBe('ok');
+    it('keeps the argument-derived default key for class-based actions', function () {
+        expect(CountingAction::make()->memoize()->handle(21))->toBe(42);
     });
 });
 

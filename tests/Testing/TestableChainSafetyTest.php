@@ -35,8 +35,6 @@ describe('Testable chain safety', function () {
             ->toThrow(LogicException::class, $method.'()');
     })->with([
         'fallback' => ['fallback', [fn (Throwable $e) => null]],
-        'throttle' => ['throttle', ['key']],
-        'withoutOverlapping' => ['withoutOverlapping', ['key']],
         'transactional' => ['transactional', []],
         'memoize' => ['memoize', ['key']],
         'once' => ['once', ['key']],

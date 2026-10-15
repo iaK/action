@@ -1,7 +1,6 @@
 <?php
 
 use Iak\Action\Exceptions\OnceConsumedException;
-use Iak\Action\Exceptions\ThrottledException;
 use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Facades\Cache;
@@ -94,19 +93,7 @@ describe('fallback()', function () {
         expect($count)->toBe(2);
     });
 
-    it('engages for exceptions raised by the wrappers nested inside it', function () {
-        $action = ClosureAction::make();
-
-        $action->throttle('fallback-throttle', allow: 1)->handle(fn () => 'first');
-
-        $result = $action->throttle('fallback-throttle', allow: 1)
-            ->fallback(fn (Throwable $e) => $e instanceof ThrottledException ? 'throttled' : 'failed')
-            ->handle(fn () => 'second');
-
-        expect($result)->toBe('throttled');
-    });
-
-    it('answers for a consumed once() key, not only for exceptions', function () {
+    it('engages for exceptions raised by the wrappers nested inside it, such as a consumed once() key', function () {
         $action = ClosureAction::make();
 
         $action->once('fallback-once-key')->handle(fn () => 'first');

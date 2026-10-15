@@ -705,7 +705,7 @@ class Testable
      * instead; idempotent() is the wrapper Testable supports natively.
      */
     protected const WRAPPER_METHODS = [
-        'fallback', 'throttle', 'withoutOverlapping', 'transactional', 'memoize',
+        'fallback', 'transactional', 'memoize',
         'once', 'observed', 'trace', 'dumpTrace', 'ddTrace', 'defer',
     ];
 
