@@ -9,13 +9,11 @@ use Iak\Action\Events\ActionCompleted;
 use Iak\Action\Events\ActionFailed;
 use Iak\Action\Events\ActionStarted;
 use Iak\Action\Exceptions\OnceConsumedException;
-use Iak\Action\Execution\CircuitBreaker;
 use Iak\Action\Execution\Fallback;
 use Iak\Action\Execution\Idempotency;
 use Iak\Action\Execution\Memoize;
 use Iak\Action\Execution\Middleware;
 use Iak\Action\Execution\Once;
-use Iak\Action\Execution\Retry;
 use Iak\Action\Execution\Throttle;
 use Iak\Action\Execution\Trace;
 use Iak\Action\Execution\TraceEvent;
@@ -65,8 +63,6 @@ class PendingAction
         'idempotent',
         'once',
         'withoutOverlapping',
-        'retry',
-        'circuitBreaker',
         'throttle',
         'transactional',
     ];
@@ -145,9 +141,9 @@ class PendingAction
 
     /**
      * Answer with the closure's value when handle() cannot produce a real
-     * result — whatever the reason: the action threw, retries exhausted, an
-     * open circuit breaker, or a consumed once() key (which arrives as an
-     * OnceConsumedException). The closure receives the Throwable and may
+     * result — whatever the reason: the action threw, a lock could not be
+     * acquired, the throttle budget ran out, or a consumed once() key (which
+     * arrives as an OnceConsumedException). The closure receives the Throwable and may
      * rethrow to decline. The fallback value is never cached as an
      * idempotent result.
      *
@@ -157,28 +153,6 @@ class PendingAction
     public function fallback(Closure $fallback): static
     {
         $this->middleware['fallback'] = new Fallback($fallback);
-
-        return $this;
-    }
-
-    /**
-     * Re-run handle() when it throws, up to $times total attempts, sleeping
-     * the given backoff (milliseconds; a fixed value, a per-attempt schedule
-     * whose last entry repeats, or a closure receiving the attempt number and
-     * the exception) between attempts. $when decides which exceptions are
-     * retried; by default everything is except NonRetryable ones.
-     *
-     * Retrying nests inside idempotent(): failed attempts never consume the
-     * key, and the first successful attempt is the result that gets cached.
-     *
-     * @param  (Closure(int, Throwable): int)|int|array<int, int>  $backoff
-     * @param  (Closure(Throwable): bool)|null  $when
-     * @param  bool  $jitter  Sleep a random duration between zero and the scheduled backoff instead of the exact value, so many processes retrying together spread out instead of arriving in synchronized waves.
-     * @return $this
-     */
-    public function retry(int $times = 3, Closure|int|array $backoff = 0, ?Closure $when = null, bool $jitter = false): static
-    {
-        $this->middleware['retry'] = new Retry($times, $backoff, $when, $jitter);
 
         return $this;
     }
@@ -205,7 +179,7 @@ class PendingAction
      * Opt this run into the observability envelope: the ActionStarted /
      * ActionCompleted / ActionFailed lifecycle events and the log-context
      * attribution. Nothing dispatches them implicitly — the wrapper
-     * features do exactly their own job — so adding a retry() or an
+     * features do exactly their own job — so adding a throttle() or an
      * idempotency key never changes what your logs or listeners see.
      *
      * @return $this
@@ -342,9 +316,9 @@ class PendingAction
     /**
      * Rate-limit executions to $allow per $every seconds per key (defaulting
      * to the action class). An exhausted budget throws ThrottledException —
-     * carrying availableIn() — instead of blocking; compose retry() with a
-     * backoff to wait a window out. Nested inside retry(), every attempt
-     * consumes budget: the throttle protects the dependency, not the caller.
+     * carrying availableIn() — instead of blocking, so the caller decides
+     * whether to wait the window out. Every execution attempt consumes
+     * budget: the throttle protects the dependency, not the caller.
      *
      * @return $this
      */
@@ -359,37 +333,14 @@ class PendingAction
     /**
      * Run handle() inside a database transaction, retried up to $attempts
      * times on a concurrency error (deadlock, serialization failure).
-     * Innermost in the nesting order: a retry() around it gives every
-     * attempt its own fresh transaction, and idempotent() outside it only
-     * consumes the key for work that actually committed.
+     * Innermost in the nesting order: idempotent() outside it only consumes
+     * the key for work that actually committed.
      *
      * @return $this
      */
     public function transactional(int $attempts = 1, ?string $connection = null): static
     {
         $this->middleware['transactional'] = new Transactional($attempts, $connection);
-
-        return $this;
-    }
-
-    /**
-     * Fail fast while a dependency is broken: after $threshold consecutive
-     * failures the breaker opens and handle() throws CircuitOpenException
-     * without executing, until $cooldown seconds have passed — then a single
-     * probe decides whether it closes again. The key defaults to the action
-     * class; give breakers of one shared dependency the same explicit key so
-     * they trip together. Nested inside retry(), every attempt consults and
-     * feeds the breaker, and CircuitOpenException is NonRetryable so retry()
-     * fails fast on an open circuit.
-     *
-     * @return $this
-     */
-    public function circuitBreaker(?string $key = null, int $threshold = 5, int $cooldown = 60, ?string $store = null): static
-    {
-        $this->guardInlineKey('circuitBreaker', $key);
-        $this->middleware['circuitBreaker'] = new CircuitBreaker(
-            $key ?? $this->action::class, $threshold, $cooldown, $store
-        );
 
         return $this;
     }
@@ -617,9 +568,9 @@ class PendingAction
 
     /**
      * Inline actions all share one class, so a class-derived default key
-     * would make unrelated inline actions share a breaker, throttle budget,
-     * mutex or memo entry — five failures in one inline action would open
-     * the circuit for every other one. Fail loudly at configuration time
+     * would make unrelated inline actions share a throttle budget, mutex or
+     * memo entry — one inline action exhausting its budget would throttle
+     * every other one. Fail loudly at configuration time
      * instead of silently cross-talking at run time.
      */
     protected function guardInlineKey(string $method, ?string $key): void

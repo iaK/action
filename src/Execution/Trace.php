@@ -72,7 +72,7 @@ final class Trace implements Stringable
      * The human-readable timeline, one line per entry:
      *
      *     +0.0ms  started
-     *     +0.2ms  retry: attempt 1 failed (ConnectionException)
+     *     +0.2ms  lock: acquired for 'sync:42'
      *     ...
      */
     public function summary(): string

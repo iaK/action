@@ -6,7 +6,7 @@ use Closure;
 
 /**
  * One cross-cutting execution concern wrapped around an action invocation
- * (idempotency, retry, fallback, ...). PendingAction assembles the configured
+ * (idempotency, throttle, fallback, ...). PendingAction assembles the configured
  * middleware into a chain whose nesting order is fixed by PendingAction::ORDER,
  * regardless of the order the features were chained in.
  *

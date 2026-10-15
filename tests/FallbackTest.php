@@ -1,14 +1,13 @@
 <?php
 
 use Iak\Action\Exceptions\OnceConsumedException;
+use Iak\Action\Exceptions\ThrottledException;
 use Iak\Action\PendingAction;
 use Iak\Action\Tests\TestClasses\ClosureAction;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Sleep;
 
 beforeEach(function () {
     Cache::flush();
-    Sleep::fake();
 });
 
 describe('fallback()', function () {
@@ -95,22 +94,16 @@ describe('fallback()', function () {
         expect($count)->toBe(2);
     });
 
-    it('engages only after retry() has exhausted its attempts', function () {
-        $attempts = 0;
+    it('engages for exceptions raised by the wrappers nested inside it', function () {
+        $action = ClosureAction::make();
 
-        $throwing = function () use (&$attempts) {
-            $attempts++;
+        $action->throttle('fallback-throttle', allow: 1)->handle(fn () => 'first');
 
-            throw new RuntimeException('flaky');
-        };
+        $result = $action->throttle('fallback-throttle', allow: 1)
+            ->fallback(fn (Throwable $e) => $e instanceof ThrottledException ? 'throttled' : 'failed')
+            ->handle(fn () => 'second');
 
-        $result = ClosureAction::make()
-            ->fallback(fn (Throwable $e) => 'gave-up: '.$e->getMessage())
-            ->retry(times: 3)
-            ->handle($throwing);
-
-        expect($result)->toBe('gave-up: flaky');
-        expect($attempts)->toBe(3);
+        expect($result)->toBe('throttled');
     });
 
     it('answers for a consumed once() key, not only for exceptions', function () {

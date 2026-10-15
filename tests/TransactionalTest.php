@@ -68,28 +68,20 @@ describe('transactional()', function () {
         expect(DB::table('things')->count())->toBe(1);
     });
 
-    it('gives every retry() attempt its own fresh transaction', function () {
-        $runs = 0;
+    it('rolls back before an outer fallback() answers', function () {
+        $failing = function (): void {
+            DB::table('things')->insert(['name' => 'doomed']);
 
-        $flaky = function () use (&$runs) {
-            $runs++;
-
-            DB::table('things')->insert(['name' => 'attempt-'.$runs]);
-
-            if ($runs === 1) {
-                throw new RuntimeException('flaky');
-            }
-
-            return 'done';
+            throw new RuntimeException('down');
         };
 
-        $result = ClosureAction::make()->retry(times: 2)->transactional()->handle($flaky);
+        $result = ClosureAction::make()
+            ->fallback(fn (Throwable $e) => 'degraded')
+            ->transactional()
+            ->handle($failing);
 
-        expect($result)->toBe('done');
-        expect($runs)->toBe(2);
-
-        // The failed attempt rolled back; only the success committed.
-        expect(DB::table('things')->count())->toBe(1);
+        expect($result)->toBe('degraded');
+        expect(DB::table('things')->count())->toBe(0);
     });
 
     it('rejects attempts below one', function () {

@@ -66,7 +66,7 @@ describe('throttle()', function () {
         expect($result)->toBe('ok');
     });
 
-    it('consumes budget per attempt when nested inside retry()', function () {
+    it('consumes budget for failed executions too', function () {
         $attempts = 0;
 
         $throwing = function () use (&$attempts) {
@@ -75,12 +75,16 @@ describe('throttle()', function () {
             throw new RuntimeException('flaky');
         };
 
-        // Three retry attempts against a budget of two: the first two execute
-        // (and fail), the third is throttled before executing.
-        expect(fn () => ClosureAction::make()
-            ->retry(times: 3)
-            ->throttle('limited', allow: 2, every: 60)
-            ->handle($throwing))->toThrow(ThrottledException::class);
+        $action = ClosureAction::make();
+
+        // Two failing executions against a budget of two: both execute (and
+        // fail), the third call is throttled before executing.
+        expect(fn () => $action->throttle('limited', allow: 2, every: 60)->handle($throwing))
+            ->toThrow(RuntimeException::class, 'flaky');
+        expect(fn () => $action->throttle('limited', allow: 2, every: 60)->handle($throwing))
+            ->toThrow(RuntimeException::class, 'flaky');
+        expect(fn () => $action->throttle('limited', allow: 2, every: 60)->handle($throwing))
+            ->toThrow(ThrottledException::class);
 
         expect($attempts)->toBe(2);
     });

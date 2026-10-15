@@ -18,7 +18,7 @@ describe('automatic log context', function () {
     });
 
     it('leaves the context untouched for wrapper features without observed()', function () {
-        $seen = ClosureAction::make()->retry(times: 2)->handle(fn (): mixed => Context::get('action'));
+        $seen = ClosureAction::make()->throttle(allow: 2)->handle(fn (): mixed => Context::get('action'));
 
         expect($seen)->toBeNull();
         expect(Context::has('action'))->toBeFalse();

@@ -9,10 +9,9 @@ use RuntimeException;
  * and there is no result to answer. A chained fallback() — outermost in the
  * ORDER — catches it and its closure answers instead (rethrow to decline);
  * without a fallback the wrapper converts it to null at the chain boundary,
- * preserving the original skip contract. NonRetryable, because a consumed
- * key cannot un-consume between in-process attempts.
+ * preserving the original skip contract.
  */
-class OnceConsumedException extends RuntimeException implements NonRetryable
+class OnceConsumedException extends RuntimeException
 {
     public function __construct(protected string $onceKey)
     {

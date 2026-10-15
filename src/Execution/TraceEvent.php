@@ -22,11 +22,6 @@ enum TraceEvent: string
     case OnceHit = 'once_hit';
     case OnceStored = 'once_stored';
     case LockAcquired = 'lock_acquired';
-    case RetryAttempt = 'retry_attempt';
-    case RetrySlept = 'retry_slept';
-    case CircuitOpenRejected = 'circuit_open_rejected';
-    case CircuitProbeAllowed = 'circuit_probe_allowed';
-    case CircuitTripped = 'circuit_tripped';
     case Throttled = 'throttled';
     case TransactionCommitted = 'transaction_committed';
     case TransactionRetried = 'transaction_retried';
@@ -51,11 +46,6 @@ enum TraceEvent: string
             self::OnceHit => sprintf("once: skipped, '%s' is already consumed", (string) ($context['key'] ?? '?')),
             self::OnceStored => sprintf("once: consumed '%s'", (string) ($context['key'] ?? '?')),
             self::LockAcquired => sprintf("lock: acquired for '%s'", (string) ($context['key'] ?? '?')),
-            self::RetryAttempt => sprintf('retry: attempt %s failed (%s)', (string) ($context['attempt'] ?? '?'), (string) ($context['exception'] ?? 'unknown')),
-            self::RetrySlept => sprintf('retry: sleeping %sms', (string) ($context['milliseconds'] ?? '?')),
-            self::CircuitOpenRejected => sprintf('circuit breaker: open, rejecting (available in %ss)', (string) ($context['available_in'] ?? '?')),
-            self::CircuitProbeAllowed => 'circuit breaker: half-open, probing',
-            self::CircuitTripped => sprintf('circuit breaker: tripped open after %s consecutive failures', (string) ($context['failures'] ?? '?')),
             self::Throttled => sprintf('throttle: budget exhausted (available in %ss)', (string) ($context['available_in'] ?? '?')),
             self::TransactionCommitted => 'transaction: committed',
             self::TransactionRetried => sprintf('transaction: attempt %s after a concurrency error', (string) ($context['attempt'] ?? '?')),

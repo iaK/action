@@ -34,9 +34,7 @@ describe('Testable chain safety', function () {
         expect(fn () => ClosureAction::test()->{$method}(...$arguments))
             ->toThrow(LogicException::class, $method.'()');
     })->with([
-        'retry' => ['retry', [2]],
         'fallback' => ['fallback', [fn (Throwable $e) => null]],
-        'circuitBreaker' => ['circuitBreaker', ['key']],
         'throttle' => ['throttle', ['key']],
         'withoutOverlapping' => ['withoutOverlapping', ['key']],
         'transactional' => ['transactional', []],

@@ -10,12 +10,12 @@ use InvalidArgumentException;
 /**
  * Rate-limits the invocations per key: $allow executions per $every seconds,
  * counted through Laravel's RateLimiter. The budget is consumed per real
- * execution attempt — nested inside retry(), every attempt pays — because
- * the throttle protects the dependency behind the action, not the caller.
+ * execution attempt because the throttle protects the dependency behind the
+ * action, not the caller.
  *
  * When the budget is exhausted a ThrottledException (carrying availableIn())
- * is thrown instead of blocking; compose retry() with a backoff around the
- * action to wait a window out.
+ * is thrown instead of blocking, so the caller decides whether to wait the
+ * window out.
  *
  * @internal Configured via PendingAction::throttle().
  */

@@ -9,8 +9,8 @@ use InvalidArgumentException;
 /**
  * Runs the invocation inside a database transaction, re-running it up to
  * $attempts times on a concurrency error (deadlock, serialization failure)
- * via DB::transaction(). Innermost in the middleware ORDER on purpose: a
- * retry() around it gives every attempt its own fresh transaction.
+ * via DB::transaction(). Innermost in the middleware ORDER on purpose: every
+ * outer wrapper sees only work that actually committed.
  *
  * @internal Configured via PendingAction::transactional().
  */
