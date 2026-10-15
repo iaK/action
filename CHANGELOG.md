@@ -2,8 +2,6 @@
 
 All notable changes to `laravel-action` will be documented in this file.
 
-## Unreleased
-
 **Breaking changes**
 
 - The `retry()` and `circuitBreaker()` execution wrappers were removed — from `Action`, `PendingAction` and `Inline` — together with `CircuitOpenException`, the `NonRetryable` marker interface and the `RetryAttempt`/`RetrySlept`/`CircuitOpenRejected`/`CircuitProbeAllowed`/`CircuitTripped` trace events. `fallback()` is unchanged, and `transactional($attempts)` still re-runs on deadlocks. `OnceConsumedException` no longer implements `NonRetryable`.
