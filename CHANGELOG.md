@@ -2,6 +2,14 @@
 
 All notable changes to `laravel-action` will be documented in this file.
 
+## 3.1.0 - Unreleased
+
+Laravel 13 support.
+
+**New features**
+
+- Laravel 13 is supported alongside Laravel 11 and 12 (`illuminate/*` `^13.0`). The test matrix covers Laravel 13 on PHP 8.3, 8.4 and 8.5.
+
 ## 3.0.0 - 2026-10-15
 
 Slimmer core: retry(), circuitBreaker(), throttle() and withoutOverlapping() removed; run() renamed to then(); consumed once() keys route through fallback().
