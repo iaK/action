@@ -2,7 +2,7 @@
 
 All notable changes to `laravel-action` will be documented in this file.
 
-## 3.1.0 - Unreleased
+## 3.1.0 - 2026-10-27
 
 Laravel 13 support.
 
