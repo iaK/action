@@ -63,6 +63,11 @@ class ArrayNoLockStore implements Store
         return true;
     }
 
+    public function touch($key, $seconds)
+    {
+        return array_key_exists($key, $this->storage);
+    }
+
     public function forget($key)
     {
         unset($this->storage[$key]);
